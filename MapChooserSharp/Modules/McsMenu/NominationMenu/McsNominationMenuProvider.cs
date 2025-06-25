@@ -2,6 +2,7 @@
 using CounterStrikeSharp.API.Core;
 using MapChooserSharp.Modules.McsMenu.NominationMenu.BuiltInHtml;
 using MapChooserSharp.Modules.McsMenu.NominationMenu.Cs2MenuManager.ScreenMenu;
+using MapChooserSharp.Modules.McsMenu.NominationMenu.Cs2MenuManager.MenuSystem;
 using MapChooserSharp.Modules.McsMenu.NominationMenu.Cs2ScreenMenuApi;
 using MapChooserSharp.Modules.McsMenu.NominationMenu.Interfaces;
 using MapChooserSharp.Modules.McsMenu.VoteMenu.Interfaces;
@@ -95,6 +96,10 @@ public sealed class McsNominationMenuProvider(IServiceProvider serviceProvider, 
                 
                 case McsSupportedMenuType.Cs2MenuManagerScreen:
                     _uiFactories[type] = new McsCs2MenuManagerScreenMenuNominationUiFactory(ServiceProvider);
+                    break;
+                
+                case McsSupportedMenuType.Cs2MenuManagerMenuSystem:
+                    _uiFactories[type] = new McsCs2MenuManagerMenuSystemNominationUiFactory(ServiceProvider);
                     break;
             }
         }
