@@ -13,6 +13,7 @@ using MapChooserSharp.Modules.MapCycle.Interfaces;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ZLinq;
 using NativeVoteAPI;
 using NativeVoteAPI.API;
 using TNCSSPluginFoundation.Models.Plugin;

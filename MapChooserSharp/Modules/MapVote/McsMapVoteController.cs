@@ -32,6 +32,7 @@ using Microsoft.Extensions.Primitives;
 using TNCSSPluginFoundation.Models.Plugin;
 using TNCSSPluginFoundation.Utils.Entity;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
+using ZLinq;
 
 namespace MapChooserSharp.Modules.MapVote;
 
@@ -1067,57 +1068,54 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
     private List<IMapConfig> PickRandomFilteredMaps(List<IMapConfig> unusedMapList, int numToPick)
     {
-        // This method will not use Linq to make debug logging easier
-        var shuffledMaps = unusedMapList
-            .OrderBy(_ => _random.Next()).ToList();
+        var shuffledMaps = unusedMapList.OrderBy(_ => _random.Next()).ToList();
+        
+        // DEBUG: Log all maps and their IsDisabled status
+        DebugLogger.LogDebug($"[DEBUG] Total maps in pool: {shuffledMaps.Count}");
+        foreach (var map in shuffledMaps)
+        {
+            DebugLogger.LogDebug($"[DEBUG] Map: {map.MapName}, IsDisabled: {map.IsDisabled}");
+        }
 
-        
-        var cooldownEndedMaps = shuffledMaps.Where(map => map.MapCooldown.CurrentCooldown <= 0).ToList();
-        DebugLogger.LogTrace($"[Filter | Map Cooldown] {cooldownEndedMaps.Count} maps found.");
+        int currentPlayerCount = Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false });
+        var currentTime = TimeOnly.FromDateTime(DateTime.Now);
+        var currentDay = DateTime.Today.DayOfWeek;
+        var currentMapName = _mapCycleController.CurrentMap?.MapName;
 
-        
-        var alsoGroupCooldownEnded = cooldownEndedMaps.Where(map =>
-            !map.GroupSettings.Any() ||
-            map.GroupSettings.Count(setting => setting.GroupCooldown.CurrentCooldown > 0) == 0).ToList();
-        DebugLogger.LogTrace($"[Filter | Gorup Cooldown] {cooldownEndedMaps.Count} maps found.");
-        
+        var filteredMaps = shuffledMaps
+            .Where(map => !map.IsDisabled)
+            .Where(map => map.MapCooldown.CurrentCooldown <= 0)
+            .Where(map => !map.GroupSettings.Any() ||
+                         map.GroupSettings.Count(setting => setting.GroupCooldown.CurrentCooldown > 0) == 0)
+            .Where(map => !map.OnlyNomination)
+            .Where(map => !map.NominationConfig.RestrictToAllowedUsersOnly)
+            .Where(map => map.NominationConfig.MinPlayers == 0 ||
+                         map.NominationConfig.MinPlayers <= currentPlayerCount)
+            .Where(map => map.NominationConfig.MaxPlayers == 0 ||
+                         map.NominationConfig.MaxPlayers >= currentPlayerCount)
+            .Where(map => !map.NominationConfig.RequiredPermissions.Any())
+            .Where(map => !map.NominationConfig.DaysAllowed.Any() ||
+                         map.NominationConfig.DaysAllowed.Contains(currentDay))
+            .Where(map => !map.NominationConfig.AllowedTimeRanges.Any() ||
+                         map.NominationConfig.AllowedTimeRanges.Any(range => range.IsInRange(currentTime)))
+            .Where(map => !map.MapName.Equals(currentMapName))
+            .Take(numToPick)
+            .ToList();
 
-        var notRestrectedToNominationOnly = alsoGroupCooldownEnded.Where(map => !map.OnlyNomination).ToList();
-        DebugLogger.LogTrace($"[Filter | No Nomination Restriction] {notRestrectedToNominationOnly.Count} maps found.");
+        // Debug logging for filter results
+        var enabledMaps = shuffledMaps.Where(map => !map.IsDisabled).Count();
+        DebugLogger.LogTrace($"[Filter | Enabled Maps] {enabledMaps} maps found (filtered out {shuffledMaps.Count - enabledMaps} disabled maps).");
         
-
-        var notRestrictedToCertainUsers = notRestrectedToNominationOnly.Where(map => !map.NominationConfig.RestrictToAllowedUsersOnly).ToList();
-        DebugLogger.LogTrace($"[Filter | Not Restricted Certain users] {notRestrictedToCertainUsers.Count} maps found.");
+        var cooldownEndedMaps = shuffledMaps.Where(map => !map.IsDisabled && map.MapCooldown.CurrentCooldown <= 0).Count();
+        DebugLogger.LogTrace($"[Filter | Map Cooldown] {cooldownEndedMaps} maps found.");
         
-
-        var greaterThanMinPlayers = notRestrictedToCertainUsers.Where(map => map.NominationConfig.MinPlayers == 0 || map.NominationConfig.MinPlayers <= Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false })).ToList();
-        DebugLogger.LogTrace($"[Filter | Greater Than Min Players] {greaterThanMinPlayers.Count} maps found.");
+        var groupCooldownEndedMaps = shuffledMaps.Where(map => !map.IsDisabled && map.MapCooldown.CurrentCooldown <= 0 &&
+            (!map.GroupSettings.Any() || map.GroupSettings.Count(setting => setting.GroupCooldown.CurrentCooldown > 0) == 0)).Count();
+        DebugLogger.LogTrace($"[Filter | Group Cooldown] {groupCooldownEndedMaps} maps found.");
         
-
-        var lowerThanMaxPlayers = greaterThanMinPlayers.Where(map => map.NominationConfig.MaxPlayers == 0 || map.NominationConfig.MaxPlayers >= Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false })).ToList();
-        DebugLogger.LogTrace($"[Filter | Lower Than Max Players] {lowerThanMaxPlayers.Count} maps found.");
+        DebugLogger.LogTrace($"[Filter | Finally] {filteredMaps.Count} maps picked.");
         
-
-        var notRequiresPermission = lowerThanMaxPlayers.Where(map => !map.NominationConfig.RequiredPermissions.Any()).ToList();
-        DebugLogger.LogTrace($"[Filter | Not Requires Permission] {notRequiresPermission.Count} maps found.");
-        
-
-        var withinAllowedDays = notRequiresPermission.Where(map => !map.NominationConfig.DaysAllowed.Any() || map.NominationConfig.DaysAllowed.Contains(DateTime.Today.DayOfWeek)).ToList();
-        DebugLogger.LogTrace($"[Filter | Within Allowed Days] {withinAllowedDays.Count} maps found.");
-        
-
-        var whithinAllowedTimeRange = withinAllowedDays.Where(map => !map.NominationConfig.AllowedTimeRanges.Any() || map.NominationConfig.AllowedTimeRanges.Count(range => range.IsInRange(TimeOnly.FromDateTime(DateTime.Now))) >= 1).ToList();
-        DebugLogger.LogTrace($"[Filter | Within Allowed Time Range] {whithinAllowedTimeRange.Count} maps found.");
-        
-
-        var withoutCurrentMap = whithinAllowedTimeRange.Where(map => !map.MapName.Equals(_mapCycleController.CurrentMap?.MapName)).ToList();
-        DebugLogger.LogTrace($"[Filter | Without Current Map] {withoutCurrentMap.Count} maps found.");
-        
-
-        var pickedMaps = whithinAllowedTimeRange.Take(numToPick).ToList();
-        DebugLogger.LogTrace($"[Filter | Finally] {pickedMaps.Count} maps picked.");
-        
-        return pickedMaps;
+        return filteredMaps;
     }
 
 

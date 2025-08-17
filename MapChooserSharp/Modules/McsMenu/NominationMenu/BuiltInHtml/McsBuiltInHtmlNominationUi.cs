@@ -13,6 +13,7 @@ using MapChooserSharp.Modules.Nomination;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using TNCSSPluginFoundation;
+using ZLinq;
 using TNCSSPluginFoundation.Interfaces;
 
 namespace MapChooserSharp.Modules.McsMenu.NominationMenu.BuiltInHtml;

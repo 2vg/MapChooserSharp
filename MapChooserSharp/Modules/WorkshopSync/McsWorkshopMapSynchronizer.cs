@@ -430,74 +430,67 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     private string ConvertMapConfigToTomlString(NullableMapConfig mapConfig)
     {
         var sb = new StringBuilder();
-        // For individual files (split mode), we don't include the section header
-        // The filename itself becomes the section name when parsed
-        // For unified files, the section header is added by ConvertMapConfigToTomlSectionString
 
-        sb.AppendLine($"MapNameAlias = \"{TomlEncode(mapConfig.MapNameAlias ?? "empty")}\"");
-        sb.AppendLine($"MapDescription = \"{TomlEncode(mapConfig.MapDescription ?? "empty")}\"");
-        sb.AppendLine($"IsDisabled = {mapConfig.IsDisabled?.ToString().ToLowerInvariant() ?? "false"}");
+        // ---- string ----
+        if (!string.IsNullOrEmpty(mapConfig.MapNameAlias))
+            sb.AppendLine($"MapNameAlias = \"{TomlEncode(mapConfig.MapNameAlias!)}\"");
+        if (!string.IsNullOrEmpty(mapConfig.MapDescription))
+            sb.AppendLine($"MapDescription = \"{TomlEncode(mapConfig.MapDescription!)}\"");
+
+        // ---- bool ----
+        if (mapConfig.IsDisabled.HasValue)
+            sb.AppendLine($"IsDisabled = {mapConfig.IsDisabled.Value.ToString().ToLowerInvariant()}");
+        if (mapConfig.OnlyNomination.HasValue)
+            sb.AppendLine($"OnlyNomination = {mapConfig.OnlyNomination.Value.ToString().ToLowerInvariant()}");
+        if (mapConfig.RestrictToAllowedUsersOnly.HasValue)
+            sb.AppendLine($"RestrictToAllowedUsersOnly = {mapConfig.RestrictToAllowedUsersOnly.Value.ToString().ToLowerInvariant()}");
+        if (mapConfig.ProhibitAdminNomination.HasValue)
+            sb.AppendLine($"ProhibitAdminNomination = {mapConfig.ProhibitAdminNomination.Value.ToString().ToLowerInvariant()}");
+
+        // ---- numeric ----
         if (mapConfig.WorkshopId.HasValue && mapConfig.WorkshopId.Value > 0)
             sb.AppendLine($"WorkshopId = {mapConfig.WorkshopId.Value}");
-        sb.AppendLine($"OnlyNomination = {mapConfig.OnlyNomination?.ToString().ToLowerInvariant() ?? "false"}");
+        if (mapConfig.MaxExtends.HasValue)
+            sb.AppendLine($"MaxExtends = {mapConfig.MaxExtends.Value}");
+        if (mapConfig.MaxExtCommandUses.HasValue)
+            sb.AppendLine($"MaxExtCommandUses = {mapConfig.MaxExtCommandUses.Value}");
+        if (mapConfig.MapTime.HasValue)
+            sb.AppendLine($"MapTime = {mapConfig.MapTime.Value}");
+        if (mapConfig.ExtendTimePerExtends.HasValue)
+            sb.AppendLine($"ExtendTimePerExtends = {mapConfig.ExtendTimePerExtends.Value}");
+        if (mapConfig.MapRounds.HasValue)
+            sb.AppendLine($"MapRounds = {mapConfig.MapRounds.Value}");
+        if (mapConfig.ExtendRoundsPerExtends.HasValue)
+            sb.AppendLine($"ExtendRoundsPerExtends = {mapConfig.ExtendRoundsPerExtends.Value}");
+        if (mapConfig.Cooldown.HasValue)
+            sb.AppendLine($"Cooldown = {mapConfig.Cooldown.Value}");
+        if (mapConfig.MaxPlayers.HasValue)
+            sb.AppendLine($"MaxPlayers = {mapConfig.MaxPlayers.Value}");
+        if (mapConfig.MinPlayers.HasValue)
+            sb.AppendLine($"MinPlayers = {mapConfig.MinPlayers.Value}");
 
-        sb.AppendLine($"MaxExtends = {mapConfig.MaxExtends ?? 3}");
-        sb.AppendLine($"MaxExtCommandUses = {mapConfig.MaxExtCommandUses ?? 1}");
-        sb.AppendLine($"MapTime = {mapConfig.MapTime ?? 20}");
-        sb.AppendLine($"ExtendTimePerExtends = {mapConfig.ExtendTimePerExtends ?? 15}");
-        sb.AppendLine($"MapRounds = {mapConfig.MapRounds ?? 10}");
-        sb.AppendLine($"ExtendRoundsPerExtends = {mapConfig.ExtendRoundsPerExtends ?? 5}");
-
-        sb.AppendLine($"Cooldown = {mapConfig.Cooldown ?? 0}");
-
-        // NominationConfig settings
-        if (mapConfig.RequiredPermissions != null && mapConfig.RequiredPermissions.Any())
+        // ---- collections ----
+        if (mapConfig.RequiredPermissions is { Count: > 0 })
             sb.AppendLine($"RequiredPermissions = [{string.Join(", ", mapConfig.RequiredPermissions.Select(p => $"\"{TomlEncode(p)}\""))}]");
-        else
-            sb.AppendLine("RequiredPermissions = []");
 
-        sb.AppendLine($"RestrictToAllowedUsersOnly = {(mapConfig.RestrictToAllowedUsersOnly?.ToString().ToLowerInvariant() ?? "false")}");
-
-        if (mapConfig.AllowedSteamIds != null && mapConfig.AllowedSteamIds.Any())
+        if (mapConfig.AllowedSteamIds is { Count: > 0 })
             sb.AppendLine($"AllowedSteamIds = [{string.Join(", ", mapConfig.AllowedSteamIds)}]");
-        else
-            sb.AppendLine("AllowedSteamIds = []");
-
-        if (mapConfig.DisallowedSteamIds != null && mapConfig.DisallowedSteamIds.Any())
+        if (mapConfig.DisallowedSteamIds is { Count: > 0 })
             sb.AppendLine($"DisallowedSteamIds = [{string.Join(", ", mapConfig.DisallowedSteamIds)}]");
-        else
-            sb.AppendLine("DisallowedSteamIds = []");
 
-        sb.AppendLine($"MaxPlayers = {mapConfig.MaxPlayers ?? 0}");
-        sb.AppendLine($"MinPlayers = {mapConfig.MinPlayers ?? 0}");
-        sb.AppendLine($"ProhibitAdminNomination = {(mapConfig.ProhibitAdminNomination?.ToString().ToLowerInvariant() ?? "false")}");
-
-        if (mapConfig.DaysAllowed != null && mapConfig.DaysAllowed.Any())
+        if (mapConfig.DaysAllowed is { Count: > 0 })
             sb.AppendLine($"DaysAllowed = [{string.Join(", ", mapConfig.DaysAllowed.Select(d => $"\"{d}\""))}]");
-        else
-            sb.AppendLine("DaysAllowed = []");
 
-        if (mapConfig.AllowedTimeRanges != null && mapConfig.AllowedTimeRanges.Any())
+        if (mapConfig.AllowedTimeRanges is { Count: > 0 })
         {
             var timeRangesStr = mapConfig.AllowedTimeRanges.Select(tr =>
                 $"{{ Start = \"{tr.StartTime:hh\\:mm}\", End = \"{tr.EndTime:hh\\:mm}\" }}"
             );
             sb.AppendLine($"AllowedTimeRanges = [{string.Join(", ", timeRangesStr)}]");
         }
-        else
-        {
-            sb.AppendLine("AllowedTimeRanges = []");
-        }
 
-        // GroupSettings are usually references, new maps might not have them or default to one.
-        if (mapConfig.GroupSettingsArray != null && mapConfig.GroupSettingsArray.Any())
+        if (mapConfig.GroupSettingsArray is { Count: > 0 })
             sb.AppendLine($"GroupSettings = [{string.Join(", ", mapConfig.GroupSettingsArray.Select(g => $"\"{TomlEncode(g)}\""))}]");
-        else
-            sb.AppendLine("GroupSettings = [\"default\"]"); // Default to "default" group if none specified
-
-        // ExtraConfiguration is complex; for new maps, it's likely empty.
-        // If needed, it would require careful construction. For now, assume empty.
-        // sb.AppendLine("[extra]"); (if any)
 
         return sb.ToString();
     }

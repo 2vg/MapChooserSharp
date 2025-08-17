@@ -25,6 +25,7 @@ using MapChooserSharp.Modules.Nomination.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TNCSSPluginFoundation.Models.Plugin;
+using ZLinq;
 using TNCSSPluginFoundation.Utils.Entity;
 
 namespace MapChooserSharp.Modules.Nomination;
@@ -245,9 +246,9 @@ internal sealed class McsMapNominationController(IServiceProvider serviceProvide
         
         foreach (IMapConfig config in configs)
         {
-            // TODO() More menu disablation check
-            bool isMenuDisabled = config.IsDisabled;
-            
+            NominationCheck nominationCheck = PlayerCanNominateMap(player, config);
+            bool isMenuDisabled = config.IsDisabled || nominationCheck != NominationCheck.Success;
+
             menuOptions.Add(new McsNominationMenuOption(new McsNominationOption(config, isAdminNomination), OnPlayerCastNominationMenu, isMenuDisabled));
         }
         

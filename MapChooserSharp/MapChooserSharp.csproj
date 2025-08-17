@@ -12,7 +12,7 @@
     <Copy SourceFiles="$(TargetDir)$(ProjectName).dll" DestinationFolder="$(CS2_SERVER_DIR)\game\csgo\addons\counterstrikesharp\plugins\$(ProjectName)" />
     <Message Text="Successfully copied the plugin files" Importance="High" />
   </Target>
-  
+
   <ItemGroup>
     <PackageReference Include="CounterStrikeSharp.API" Version="1.0.316" />
     <PackageReference Include="CS2ScreenMenuAPI" Version="3.0.4" />
@@ -23,11 +23,27 @@
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.116" />
     <PackageReference Include="TNCSSPluginFoundation" Version="0.3.1" />
     <PackageReference Include="Tomlyn" Version="0.19.0" />
+    <PackageReference Include="ZLinq" Version="1.4.12" />
     <ProjectReference Include="..\MapChooserSharp.API\MapChooserSharp.API.csproj">
       <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
-  
+
+  <!-- Enable ZLinq.DropInGenerator -->
+  <ItemGroup>
+    <PackageReference Include="ZLinq.DropInGenerator" Version="1.4.12">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <AssemblyAttribute Include="ZLinq.ZLinqDropInAttribute">
+      <_Parameter1></_Parameter1>
+      <_Parameter2>ZLinq.DropInGenerateTypes.Everything</_Parameter2>
+      <_Parameter2_IsLiteral>true</_Parameter2_IsLiteral>
+      <_Parameter2_TypeName>ZLinq.DropInGenerateTypes</_Parameter2_TypeName>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="CS2MenuManager">
       <HintPath>..\lib\CS2MenuManager.dll</HintPath>

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using TNCSSPluginFoundation.Models.Plugin;
 using Tomlyn;
 using Tomlyn.Model;
+using ZLinq;
 
 namespace MapChooserSharp.Modules.PluginConfig;
 

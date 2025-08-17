@@ -18,6 +18,7 @@ using MapChooserSharp.Modules.Nomination.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TNCSSPluginFoundation.Models.Plugin;
+using ZLinq;
 using TNCSSPluginFoundation.Utils.Entity;
 
 namespace MapChooserSharp.Modules.MapCycle;
