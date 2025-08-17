@@ -1,7 +1,6 @@
 ﻿using System.Text;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
@@ -10,11 +9,8 @@ using MapChooserSharp.API.MapConfig;
 using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.API.Nomination;
 using MapChooserSharp.Modules.MapConfig.Interfaces;
-using MapChooserSharp.Modules.MapCycle;
 using MapChooserSharp.Modules.MapCycle.Interfaces;
-using MapChooserSharp.Modules.MapVote;
 using MapChooserSharp.Modules.MapVote.Interfaces;
-using MapChooserSharp.Modules.McsMenu.NominationMenu.Interfaces;
 using MapChooserSharp.Modules.Nomination.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using TNCSSPluginFoundation.Models.Plugin;
@@ -88,14 +84,14 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
 
         if (_mcsMapVoteController.CurrentVoteState == McsMapVoteState.NextMapConfirmed)
         {
-            player.PrintToChat(LocalizeWithPluginPrefixForPlayer(player, "MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
+            player.PrintToChat(LocalizeWithPluginPrefix(player, "MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
             return;
         }
 
         if (_playerNextCommandAvaiableTime.TryGetValue(player.Slot, out float nextCommandAvaiableTime) && nextCommandAvaiableTime - Server.CurrentTime > 0.0)
         {
             float time = (float)Math.Ceiling(nextCommandAvaiableTime - Server.CurrentTime);
-            player.PrintToChat(LocalizeWithPluginPrefixForPlayer(player, "General.Notification.CommandCooldown", $"{time:F0}"));
+            player.PrintToChat(LocalizeWithPluginPrefix(player, "General.Notification.CommandCooldown", $"{time:F0}"));
             return;
         }
 
@@ -104,13 +100,13 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
         // If spectators nomination is prohibited, and player is not in CT or T.
         if (PreventSpectatorsNomination.Value && player.Team != CsTeam.CounterTerrorist && player.Team != CsTeam.Terrorist)
         {
-            player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Notification.Failure.SpectatorsCannotNominate"));
+            player.PrintToChat(LocalizeWithModulePrefix(player, "Nomination.Notification.Failure.SpectatorsCannotNominate"));
             return;
         }
         
         if (info.ArgCount < 2)
         {
-            player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.Usage"));
+            player.PrintToChat(LocalizeWithModulePrefix(player, "Nomination.Command.Notification.Usage"));
             _mapNominationController.ShowNominationMenu(player);
 
             return;
@@ -146,7 +142,7 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
         
         if (!filteredMaps.Any())
         {
-            player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.NotMapsFound", mapName));
+            player.PrintToChat(LocalizeWithModulePrefix(player, "Nomination.Command.Notification.NotMapsFound", mapName));
 
             _mapNominationController.ShowNominationMenu(player);
             return;
@@ -154,7 +150,7 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
         
         if (filteredMaps.Count > 1)
         {
-            player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
+            player.PrintToChat(LocalizeWithModulePrefix(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
 
             _mapNominationController.ShowNominationMenu(player, filteredMaps);
             return;
@@ -168,28 +164,13 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
     {
         if (_mcsMapVoteController.CurrentVoteState == McsMapVoteState.NextMapConfirmed)
         {
-            if (player == null)
-            {
-                Server.PrintToConsole(LocalizeString("MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithPluginPrefixForPlayer(player, "MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
-            }
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
             return;
         }
         
         if (info.ArgCount < 2)
         {
-            if (player == null)
-            {
-                Server.PrintToConsole(LocalizeString("NominationAddMap.Command.Notification.Usage"));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "NominationAddMap.Command.Notification.Usage"));
-                _mapNominationController.ShowNominationMenu(player, true);
-            }
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "NominationAddMap.Command.Notification.Usage"));
             return;
         }
 
@@ -209,31 +190,13 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
         
         if (!matchedMaps.Any())
         {
-            if (player == null)
-            {
-                Server.PrintToConsole(LocalizeString("Nomination.Command.Notification.NotMapsFound", mapName));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.NotMapsFound", mapName));
-
-                _mapNominationController.ShowNominationMenu(player, true);
-            }
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "Nomination.Command.Notification.NotMapsFound", mapName));
             return;
         }
 
         if (matchedMaps.Count > 1)
         {
-            if (player == null)
-            {
-                Server.PrintToConsole(LocalizeString("Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
-
-                _mapNominationController.ShowNominationMenu(player, matchedMaps.Select(kv => kv.Value).ToList(), true);
-            }
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
             return;
         }
 
@@ -245,26 +208,15 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
     {
         if (_mcsMapVoteController.CurrentVoteState == McsMapVoteState.NextMapConfirmed)
         {
-            if (player == null)
-            {
-                Server.PrintToConsole(LocalizeString("MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithPluginPrefixForPlayer(player, "MapCycle.Command.Notification.NextMap", _mcsInternalMapConfigProviderApi.GetMapName(_mapCycleController.NextMap!)));
-            }
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Notification.NextMap", _mapCycleController.NextMap!.MapName));
             return;
         }
         
         if (info.ArgCount < 2)
         {
-            if (player == null)
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "NominationRemoveMap.Command.Notification.Usage"));
+            if (player != null)
             {
-                Server.PrintToConsole(LocalizeString("NominationRemoveMap.Command.Notification.Usage"));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "NominationRemoveMap.Command.Notification.Usage"));
                 _mapNominationController.ShowRemoveNominationMenu(player);
             }
             return;
@@ -277,15 +229,9 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
         
         if (!matchedMaps.Any())
         {
-            if (player == null)
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "Nomination.Command.Notification.NotMapsFound", mapName));
+            if (player != null)
             {
-                Server.PrintToConsole(LocalizeString("Nomination.Command.Notification.NotMapsFound", mapName));
-
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.NotMapsFound", mapName));
-
                 _mapNominationController.ShowRemoveNominationMenu(player);
             }
             return;
@@ -293,14 +239,9 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
 
         if (matchedMaps.Count > 1)
         {
-            if (player == null)
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
+            if (player != null)
             {
-                Server.PrintToConsole(LocalizeString("Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
-            }
-            else
-            {
-                player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "Nomination.Command.Notification.MultipleResult", matchedMaps.Count, mapName));
-
                 _mapNominationController.ShowRemoveNominationMenu(player, matchedMaps.Select(kv => kv.Value).ToList());
             }
             return;
@@ -317,12 +258,12 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
 
         if (_mapNominationController.NominatedMaps.Count < 1)
         {
-            player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "NominationList.Command.Notification.ThereIsNoNomination"));
+            player.PrintToChat(LocalizeWithModulePrefix(player, "NominationList.Command.Notification.ThereIsNoNomination"));
             return;
         }
         
         
-        player.PrintToChat(LocalizeWithModulePrefixForPlayer(player, "NominationList.Command.Notification.ListHeader"));
+        player.PrintToChat(LocalizeWithModulePrefix(player, "NominationList.Command.Notification.ListHeader"));
 
         bool isVerbose = false;
 
@@ -352,7 +293,7 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
 
             if (nominationData.IsForceNominated)
             {
-                nominators.Append(LocalizeStringForPlayer(player, "NominationList.Command.Notification.AdminNomination"));
+                nominators.Append(LocalizeString(player, "NominationList.Command.Notification.AdminNomination"));
             }
             else
             {
@@ -363,28 +304,28 @@ internal sealed class McsMapNominationCommands(IServiceProvider serviceProvider)
                     if (target == null)
                         continue;
                     
-                    nominators.Append($"{LocalizeStringForPlayer(player, "NominationList.Command.Notification.Verbose.PlayerName", target.PlayerName)}, ");
+                    nominators.Append($"{LocalizeString(player, "NominationList.Command.Notification.Verbose.PlayerName", target.PlayerName)}, ");
                 }
             }
             
             
                 
                 
-            nominatedText.AppendLine(LocalizeStringForPlayer(player, "NominationList.Command.Notification.Verbose", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), nominators.ToString()));
+            nominatedText.AppendLine(LocalizeString(player, "NominationList.Command.Notification.Verbose", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), nominators.ToString()));
         }
         else
         {
             if (nominationData.IsForceNominated)
             {
-                nominatedText.AppendLine(LocalizeStringForPlayer(player, "NominationList.Command.Notification.Verbose", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), LocalizeStringForPlayer(player, "NominationList.Command.Notification.AdminNomination")));
+                nominatedText.AppendLine(LocalizeString(player, "NominationList.Command.Notification.Verbose", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), LocalizeString(player, "NominationList.Command.Notification.AdminNomination")));
             }
             else
             {
-                nominatedText.AppendLine(LocalizeStringForPlayer(player, "NominationList.Command.Notification.Content", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), nominationData.NominationParticipants.Count));
+                nominatedText.AppendLine(LocalizeString(player, "NominationList.Command.Notification.Content", index, _mcsInternalMapConfigProviderApi.GetMapName(nominationData.MapConfig), nominationData.NominationParticipants.Count));
             }
         }
         
-        player.PrintToChat(GetTextWithModulePrefixForPlayer(player, nominatedText.ToString()));
+        player.PrintToChat(GetTextWithModulePrefix(player, nominatedText.ToString()));
     }
 
     private IMapConfig? FindConfigByExactName(string mapName)

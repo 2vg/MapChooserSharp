@@ -1,6 +1,5 @@
 ﻿using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Cvars.Validators;
 using MapChooserSharp.API.Events;
@@ -125,7 +124,7 @@ internal class McsMapCycleExtendController(IServiceProvider serviceProvider, boo
         if (!_extCommandVoteParticipants.Add(player.Slot))
             return PlayerExtResult.AlreadyVoted;
 
-        var cmdExecutedEvt = new McsExtCommandExecutedEvent(GetTextWithPluginPrefix(""), player);
+        var cmdExecutedEvt = new McsExtCommandExecutedEvent(GetTextWithPluginPrefix(null, ""), player);
         var result = _internalEventManager.FireEvent(cmdExecutedEvt);
 
         

@@ -6,16 +6,13 @@ using CounterStrikeSharp.API.Modules.Timers;
 using MapChooserSharp.API.Events.MapCycle;
 using MapChooserSharp.API.Events.MapVote;
 using MapChooserSharp.API.MapConfig;
-using MapChooserSharp.API.MapCycleController;
 using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.Interfaces;
 using MapChooserSharp.Modules.MapConfig.Interfaces;
 using MapChooserSharp.Modules.MapCycle.Interfaces;
-using MapChooserSharp.Modules.MapVote;
 using MapChooserSharp.Modules.MapVote.Interfaces;
 using MapChooserSharp.Modules.McsDatabase.Interfaces;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
-using MapChooserSharp.Modules.RockTheVote;
 using MapChooserSharp.Modules.RockTheVote.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -164,6 +161,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
             IsFirstMapEnded = true;
         });
         Plugin.RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
+        Plugin.RegisterEventHandler<EventCsIntermission>(OnIntermission);
         
         // This is for late timer start
         // Since we cannot obtain McsMapExtendType before map is fully loaded
@@ -198,6 +196,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         
         Plugin.RemoveListener<Listeners.OnMapStart>(OnMapStart);
         Plugin.DeregisterEventHandler<EventRoundEnd>(OnRoundEnd);
+        Plugin.DeregisterEventHandler<EventCsIntermission>(OnIntermission);
     }
 
 
@@ -260,7 +259,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         
 
         // Wait for first people joined
-        Plugin.AddTimer(0.0F, () =>
+        Plugin.AddTimer(0.1F, () =>
         {
             ObtainCurrentMap(mapName);
         });
@@ -337,6 +336,20 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
             ChangeToNextMap(1.0F);
             return HookResult.Continue;
         }
+        
+        return HookResult.Continue;
+    }
+
+    private HookResult OnIntermission(EventCsIntermission @event, GameEventInfo info)
+    {
+        if (!_isMapStarted)
+            return HookResult.Continue;
+
+        if (NextMap == null)
+            return HookResult.Continue;
+
+        if (ChangeMapOnNextRoundEnd)
+            return HookResult.Continue;
 
         McsMapExtendType extendType = _timeLeftUtil.ExtendType;
 
@@ -349,7 +362,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         if (extendType == McsMapExtendType.RoundTime && _timeLeftUtil.RoundTimeLeft > 0)
             return HookResult.Continue;
         
-
+        // TODO() 将来的に、nativeなmap投票を使うようになる可能性もあるので、取得するConVarを柔軟に変更できるようにする
         ConVar? mp_competitive_endofmatch_extra_time = ConVar.Find("mp_competitive_endofmatch_extra_time");
 
         float delay = mp_competitive_endofmatch_extra_time?.GetPrimitiveValue<float>() ?? DefaultRoundRestartDelay;
@@ -454,13 +467,13 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     
     private void FireNextMapChangedEvent(IMapConfig newConfig)
     {
-        var confirmedEvent = new McsNextMapChangedEvent(GetTextWithPluginPrefix(""), newConfig);
+        var confirmedEvent = new McsNextMapChangedEvent(GetTextWithPluginPrefix(null, ""), newConfig);
         _mcsEventManager.FireEventNoResult(confirmedEvent);
     }
     
     private void FireNextMapRemovedEvent(IMapConfig newConfig)
     {
-        var nextMapRemovedEvent = new McsNextMapRemovedEvent(GetTextWithPluginPrefix(""), newConfig);
+        var nextMapRemovedEvent = new McsNextMapRemovedEvent(GetTextWithPluginPrefix(null, ""), newConfig);
         _mcsEventManager.FireEventNoResult(nextMapRemovedEvent);
     }
 }

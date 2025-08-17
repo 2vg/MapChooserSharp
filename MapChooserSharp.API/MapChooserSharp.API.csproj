@@ -7,7 +7,7 @@
       API for MapChooserSharp.
     </Description>
     <Authors>faketuna A.K.A fltuna or tuna</Authors>
-    <PackageVersion>0.1.2</PackageVersion>
+    <PackageVersion>0.1.5</PackageVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/fltuna/MapChooserSharp</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -26,7 +26,7 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.316" />
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.335" />
     <None Include="..\README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
 

@@ -2,19 +2,11 @@
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
-using CounterStrikeSharp.API.Modules.Utils;
-using MapChooserSharp.API.Events;
-using MapChooserSharp.API.Events.RockTheVote;
-using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.API.RtvController;
-using MapChooserSharp.Interfaces;
-using MapChooserSharp.Modules.MapCycle;
-using MapChooserSharp.Modules.MapVote;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
 using MapChooserSharp.Modules.RockTheVote.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using TNCSSPluginFoundation.Models.Plugin;
-using TNCSSPluginFoundation.Utils.Entity;
 
 namespace MapChooserSharp.Modules.RockTheVote;
 
@@ -66,27 +58,27 @@ public sealed class McsRtvCommands(IServiceProvider serviceProvider) : PluginMod
                 break;
             
             case PlayerRtvResult.AlreadyInRtv:
-                client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.AlreadyVoted"));
+                client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.AlreadyVoted"));
                 break;
             
             case PlayerRtvResult.CommandInCooldown:
                 if (_mcsPluginConfigProvider.PluginConfig.GeneralConfig.VerboseCooldownPrint)
                 {
-                    client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.IsInCooldown.Verbose", $"{_mcsRtvController.RtvCommandUnlockTime - Server.CurrentTime:F0}"));
+                    client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.IsInCooldown.Verbose", $"{_mcsRtvController.RtvCommandUnlockTime - Server.CurrentTime:F0}"));
                 }
                 else
                 {
-                    client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.IsInCooldown.Normal"));
+                    client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.IsInCooldown.Normal"));
                 }
                 
                 break;
             
             case PlayerRtvResult.CommandDisabled:
-                client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.Disabled"));
+                client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.Disabled"));
                 break;
             
             case PlayerRtvResult.AnotherVoteOngoing:
-                client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.YouCantRtvWhileVote"));
+                client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.YouCantRtvWhileVote"));
                 break;
             
             case PlayerRtvResult.NotAllowed:
@@ -94,7 +86,7 @@ public sealed class McsRtvCommands(IServiceProvider serviceProvider) : PluginMod
                 break;
             
             case PlayerRtvResult.RtvTriggeredAlready:
-                client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.AlreadyTriggered"));
+                client.PrintToChat(LocalizeWithModulePrefix(client, "RTV.Notification.AlreadyTriggered"));
                 break;
         }
     }
@@ -157,14 +149,7 @@ public sealed class McsRtvCommands(IServiceProvider serviceProvider) : PluginMod
     
     private void NotifyAnotherVoteOnGoing(CCSPlayerController? client)
     {
-        if (client == null)
-        {
-            Server.PrintToConsole(LocalizeString("RTV.Notification.Admin.AnotherVoteInProgress"));
-        }
-        else
-        {
-            client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.Admin.AnotherVoteInProgress"));
-        }
+        PrintMessageToServerOrPlayerChat(client, LocalizeWithPluginPrefix(client, "RTV.Notification.Admin.AnotherVoteInProgress"));
     }
     
     private bool IsAnotherVOteOngoing()
@@ -178,14 +163,7 @@ public sealed class McsRtvCommands(IServiceProvider serviceProvider) : PluginMod
 
     private void NotifyRtvAlreadyTriggered(CCSPlayerController? client)
     {
-        if (client == null)
-        {
-            Server.PrintToConsole(LocalizeString("RTV.Notification.Admin.AlreadyTriggered"));
-        }
-        else
-        {
-            client.PrintToChat(LocalizeWithModulePrefixForPlayer(client, "RTV.Notification.Admin.AlreadyTriggered"));
-        }
+        PrintMessageToServerOrPlayerChat(client, LocalizeWithPluginPrefix(client, "RTV.Notification.Admin.AlreadyTriggered"));
     }
     
     private bool CheckRtvAlreadyTriggered()
