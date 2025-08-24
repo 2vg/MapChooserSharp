@@ -8,6 +8,7 @@ using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.Interfaces;
 using MapChooserSharp.Modules.MapConfig.Interfaces;
 using MapChooserSharp.Modules.MapCycle.Interfaces;
+using MapChooserSharp.Modules.MapCycle.Services;
 using MapChooserSharp.Modules.McsDatabase.Interfaces;
 using MapChooserSharp.Modules.Nomination;
 using MapChooserSharp.Modules.Nomination.Interfaces;
@@ -31,6 +32,7 @@ internal sealed class McsMapCycleCommands(IServiceProvider serviceProvider) : Pl
     private IMcsDatabaseProvider _mcsDatabaseProvider = null!;
     private IMcsInternalEventManager _mcsInternalEventManager = null!;
     private IMcsInternalNominationApi _mcsInternalNominationApi = null!;
+    private McsMapConfigExecutionService _mcsMapConfigExecutionService = null!;
 
 
     protected override void OnAllPluginsLoaded()
@@ -41,6 +43,9 @@ internal sealed class McsMapCycleCommands(IServiceProvider serviceProvider) : Pl
         _mcsDatabaseProvider = ServiceProvider.GetRequiredService<IMcsDatabaseProvider>();
         _mcsInternalEventManager = ServiceProvider.GetRequiredService<IMcsInternalEventManager>();
         _mcsInternalNominationApi = ServiceProvider.GetRequiredService<IMcsInternalNominationApi>();
+        _mcsMapConfigExecutionService = ServiceProvider.GetRequiredService<McsMapConfigExecutionService>();
+        
+        Plugin.AddCommand("css_reloadmapcfgs", "Reload Map ConVar Configurations", CommandReloadMapConfigs);
         
         Plugin.AddCommand("css_timeleft", "Show timeleft", CommandTimeLeft);
         Plugin.AddCommand("css_nextmap", "Show next map", CommandNextMap);
@@ -60,6 +65,8 @@ internal sealed class McsMapCycleCommands(IServiceProvider serviceProvider) : Pl
 
     protected override void OnUnloadModule()
     {
+        Plugin.RemoveCommand("css_reloadmapcfgs", CommandReloadMapConfigs);
+        
         Plugin.RemoveCommand("css_timeleft", CommandTimeLeft);
         Plugin.RemoveCommand("css_nextmap", CommandNextMap);
         Plugin.RemoveCommand("css_currentmap", CommandCurrentMap);
@@ -76,8 +83,39 @@ internal sealed class McsMapCycleCommands(IServiceProvider serviceProvider) : Pl
         Plugin.RemoveCommandListener("say", SayCommandListener, HookMode.Pre);
     }
 
+    [RequiresPermissions(@"css/root")]
+    private void CommandReloadMapConfigs(CCSPlayerController? player, CommandInfo info)
+    {
+        if (_mcsMapConfigExecutionService.IsConfigsAreReloading)
+        {
+            PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Admin.Notification.MapConfigReload.ExecutingInProgress"));
+            return;
+        }
+        
+        Logger.LogInformation($"Admin: {PlayerUtil.GetPlayerName(player)} has started config reload task.");
 
-
+        Task.Run(() =>
+        {
+            Server.NextFrame(() =>
+            {
+                PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Admin.Notification.MapConfigReload.Start"));
+            });
+            _mcsMapConfigExecutionService.UpdateMapConfigs();
+        }).ContinueWith(task =>
+        {
+           Server.NextFrame(() =>
+           {
+               if (task.IsFaulted)
+               {
+                   PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Admin.Notification.MapConfigReload.Failure", task.Exception.Message));
+               }
+               else
+               {
+                   PrintMessageToServerOrPlayerChat(player, LocalizeWithPluginPrefix(player, "MapCycle.Command.Admin.Notification.MapConfigReload.Success"));
+               }
+           });
+        });
+    }
 
     private HookResult SayCommandListener(CCSPlayerController? player, CommandInfo info)
     {
