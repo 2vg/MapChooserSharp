@@ -55,6 +55,7 @@ public class McsCs2MenuManagerMenuSystemNominationUi(CCSPlayerController playerC
             menuTitle.Append(_plugin.LocalizeStringForPlayer(playerController, "General.Menu.Title.Html"));
         }
         
+        // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
         var menu = MenuManager.CreateMenu<CS2MenuManager.API.Menu.MenuSystemSharpMenu>(menuTitle.ToString(), _plugin);
         
         foreach (var (option, index) in _nominationMenuOptions.Select((value, i) => (value, i)))

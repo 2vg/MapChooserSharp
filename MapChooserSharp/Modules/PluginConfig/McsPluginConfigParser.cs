@@ -446,31 +446,17 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
                 case McsSupportedMenuType.BuiltInHtml:
                     availableMenuTypes.Add(McsSupportedMenuType.BuiltInHtml);
                     break;
-<<<<<<< HEAD
-
-                case McsSupportedMenuType.Cs2ScreenMenuApi:
-                    if (!AssemblyUtility.IsAssemblyLoaded("CS2ScreenMenuAPI"))
-                        break;
-
-                    availableMenuTypes.Add(McsSupportedMenuType.Cs2ScreenMenuApi);
-                    break;
-
-                case McsSupportedMenuType.Cs2MenuManagerScreen:
-                    Server.PrintToConsole("CHECKING");
-                    if (!AssemblyUtility.IsAssemblyLoaded("CS2MenuManager"))
-                        break;
-
-                    availableMenuTypes.Add(McsSupportedMenuType.Cs2MenuManagerScreen);
-                    break;
                 case McsSupportedMenuType.Cs2MenuManagerMenuSystem:
                     Server.PrintToConsole("CHECKING");
+
+                    if (!AssemblyUtility.IsAssemblyLoaded("CS2MenuManager"))
+                        break;
+                    // TODO: Remove when fixed mms2-menu_system
                     if (!AssemblyUtility.IsAssemblyLoaded("MenuSystemSharp"))
                         break;
-                    
+
                     availableMenuTypes.Add(McsSupportedMenuType.Cs2MenuManagerMenuSystem);
                     break;
-=======
->>>>>>> origin
             }
         }
         

@@ -58,6 +58,7 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
         }
         
         _debugLogger.LogTrace($"[Player {playerController.PlayerName}] Creating vote menu");
+        // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
         var menu = MenuManager.CreateMenu<CS2MenuManager.API.Menu.MenuSystemSharpMenu>(menuTitle.ToString(), _plugin);
 
         // If menu option is already exists (this is intended for !revote feature)
@@ -144,6 +145,7 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
         IsMenuShuffleEnabled = enableShuffle;
     }
 
+    // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
     private void DisplayMenu(CCSPlayerController player, CS2MenuManager.API.Menu.MenuSystemSharpMenu menu)
     {
         menu.Display(playerController, _voteController.VoteEndTime);
