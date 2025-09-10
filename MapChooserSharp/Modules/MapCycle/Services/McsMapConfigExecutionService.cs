@@ -137,7 +137,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
             case McsMapConfigExecutionType.StartWithMach:
                 if (mcsMapConfigType == McsMapConfigType.Map)
                 {
-                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().StartsWith(m.Key)).Select(m => m.Value).ToArray());
+                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().StartsWith(m.Key)).Select(m => m.Value).ToList());
                 }
                 else
                 {
@@ -148,7 +148,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
             case McsMapConfigExecutionType.PartialMatch:
                 if (mcsMapConfigType == McsMapConfigType.Map)
                 {
-                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().Contains(m.Key)).Select(m => m.Value).ToArray());
+                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().Contains(m.Key)).Select(m => m.Value).ToList());
                 }
                 else
                 {

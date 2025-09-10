@@ -22,7 +22,7 @@
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.116" />
     <PackageReference Include="TNCSSPluginFoundation" Version="0.4.1" />
     <PackageReference Include="Tomlyn" Version="0.19.0" />
-    <PackageReference Include="ZLinq" Version="1.4.12" />
+    <PackageReference Include="ZLinq" Version="1.5.2" />
     <ProjectReference Include="..\MapChooserSharp.API\MapChooserSharp.API.csproj">
       <Private>false</Private>
     </ProjectReference>
