@@ -14,5 +14,5 @@ internal interface IMcsGeneralConfig
     
     internal IMcsSqlConfig SqlConfig { get; }
     
-    internal RtvMapChangeBehaviourType RtvMapChangeBehaviour { get; }
+    internal MapTransitionMethod MapTransitionMethod { get; }
 }

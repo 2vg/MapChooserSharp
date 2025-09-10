@@ -375,12 +375,12 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
         var sqlConfig = ParseSqlConfig(generalTable);
         
         
-        if (!generalTable.TryGetValue("RtvMapChangeBehaviour", out var rtvMapChangeBehaviourObj) || rtvMapChangeBehaviourObj is not string rtvMapChangeBehaviourStr || !Enum.TryParse(typeof(RtvMapChangeBehaviourType), rtvMapChangeBehaviourStr, true, out var rtvMapChangeBehaviourEnum))
+        if (!generalTable.TryGetValue("MapTransitionMethod", out var mapTransitionMethodObj) || mapTransitionMethodObj is not string mapTransitionMethodStr || !Enum.TryParse(typeof(MapTransitionMethod), mapTransitionMethodStr, true, out var mapTransitionMethodEnum))
         {
-            throw new InvalidOperationException("General.RtvMapChangeBehaviour is not found or invalid");
+            throw new InvalidOperationException("General.MapTransitionMethod is not found or invalid");
         }
-        
-        return new McsGeneralConfig(aliasNameSetting, verboseCooldownPrint, workshopCollectionIds, shouldAutoFixMapName, sqlConfig, (RtvMapChangeBehaviourType)rtvMapChangeBehaviourEnum);
+
+        return new McsGeneralConfig(aliasNameSetting, verboseCooldownPrint, workshopCollectionIds, shouldAutoFixMapName, sqlConfig, (MapTransitionMethod)mapTransitionMethodEnum);
     }
 
     private McsSqlConfig ParseSqlConfig(TomlTable tomlModel)
@@ -533,8 +533,8 @@ ShouldAutoFixMapName = true
 # Available types:
 # - ImmediatelyWithTime
 # - Cs2EndMatchScreen
-# 
-RtvMapChangeBehaviour = ""ImmediatelyWithTime""
+#
+MapTransitionMethod = ""Standard""
 
 
 [General.Sql]

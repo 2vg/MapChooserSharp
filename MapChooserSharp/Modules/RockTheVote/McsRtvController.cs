@@ -254,18 +254,18 @@ internal sealed class McsRtvController(IServiceProvider serviceProvider, bool ho
     {
         RtvCommandStatus = RtvStatus.Triggered;
 
-        switch (_mcsPluginConfigProvider.PluginConfig.GeneralConfig.RtvMapChangeBehaviour)
+        switch (_mcsPluginConfigProvider.PluginConfig.GeneralConfig.MapTransitionMethod)
         {
-            case RtvMapChangeBehaviourType.ImmediatelyWithTime:
+            case MapTransitionMethod.Standard:
                 PrintLocalizedChatToAllWithModulePrefix("RTV.Broadcast.ChangeToNextMapImmediately", _mcsInternalMapConfigProviderApi.GetMapName(_mcsMapCycleController.NextMap!), MapChangeTimingAfterRtvSuccess.Value);
                 _mcsMapCycleController.ChangeToNextMap(MapChangeTimingAfterRtvSuccess.Value);
                 break;
-            case RtvMapChangeBehaviourType.Cs2EndMatchScreen:
+            case MapTransitionMethod.Cs2EndMatchScreen:
                 PrintLocalizedChatToAllWithModulePrefix("RTV.Broadcast.ChangeToNextMapCs2EndMatchScreen", _mcsInternalMapConfigProviderApi.GetMapName(_mcsMapCycleController.NextMap!));
                 _timeLeftUtil.ForceEndMatch();
                 break;
             default:
-                throw new InvalidOperationException("Failed to determine RTV Map Change Behaviour Type! We cannot change the map!!");
+                throw new InvalidOperationException("Failed to determine Map Transition Method! We cannot change the map!!");
         }
     }
 

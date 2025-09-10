@@ -1,7 +1,7 @@
 ﻿namespace MapChooserSharp.Modules.RockTheVote;
 
-public enum RtvMapChangeBehaviourType
+public enum MapTransitionMethod
 {
-    ImmediatelyWithTime,
+    Standard,
     Cs2EndMatchScreen
 }

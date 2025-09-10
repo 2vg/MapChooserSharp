@@ -3,8 +3,10 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Cvars.Validators;
 using CounterStrikeSharp.API.Modules.Timers;
+using MapChooserSharp.API.Events;
 using MapChooserSharp.API.Events.MapCycle;
 using MapChooserSharp.API.Events.MapVote;
+using MapChooserSharp.API.Events.MapCycle;
 using MapChooserSharp.API.MapConfig;
 using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.Interfaces;
@@ -14,6 +16,7 @@ using MapChooserSharp.Modules.MapCycle.Services;
 using MapChooserSharp.Modules.MapVote.Interfaces;
 using MapChooserSharp.Modules.McsDatabase.Interfaces;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
+using MapChooserSharp.Modules.RockTheVote;
 using MapChooserSharp.Modules.RockTheVote.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,6 +25,13 @@ using TNCSSPluginFoundation.Utils.Other;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
 
 namespace MapChooserSharp.Modules.MapCycle;
+
+internal enum MapChangeBehaviourType
+{
+    Immediately = 0,
+    NextRoundEnd = 1,
+    WhenTimeRunsOut = 2
+}
 
 internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bool hotReload) : PluginModuleBase(serviceProvider), IMcsInternalMapCycleControllerApi
 {
@@ -50,6 +60,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     public bool IsNextMapConfirmed => _nextMap != null;
 
     public bool ChangeMapOnNextRoundEnd { get; set; } = false;
+
+    private bool _isCurrentVoteRtv = false;
+    private bool _isCurrentVoteTimeBased = false;
 
     private IMapConfig? _currentMap = null;
 
@@ -125,14 +138,40 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     public readonly FakeConVar<int> VoteStartTimingTime = new("mcs_vote_start_timing_time", "When should vote started if map is based on mp_timelimit or mp_roundtime? (seconds)", 180,
         ConVarFlags.FCVAR_NONE, new RangeValidator<int>(0, 600));
-    
+
     public readonly FakeConVar<int> VoteStartTimingRound = new("mcs_vote_start_timing_round", "When should vote started if map is based on mp_maxrounds? (rounds)", 2,
         ConVarFlags.FCVAR_NONE, new RangeValidator<int>(2, 15));
+
+    // Map change timing settings
+    public readonly FakeConVar<int> TimeBasedVoteMapChangeBehaviour = new("mcs_time_based_vote_map_change_behaviour",
+        "Map change timing for time-based votes. 0: Immediately, 1: Next round end, 2: When time runs out", 2,
+        ConVarFlags.FCVAR_NONE, new RangeValidator<int>(0, 2));
+
+    public readonly FakeConVar<float> TimeBasedVoteMapChangeDelay = new("mcs_time_based_vote_map_change_delay",
+        "Delay in seconds after conditions are met for time-based votes", 3.0F,
+        ConVarFlags.FCVAR_NONE, new RangeValidator<float>(0.0F, 60.0F));
+
+    public readonly FakeConVar<int> RtvMapChangeBehaviour = new("mcs_rtv_map_change_behaviour",
+        "Map change timing for RTV votes. 0: Immediately, 1: Next round end, 2: When time runs out", 2,
+        ConVarFlags.FCVAR_NONE, new RangeValidator<int>(0, 2));
+
+    public readonly FakeConVar<float> RtvMapChangeDelay = new("mcs_rtv_map_change_delay",
+        "Delay in seconds after conditions are met for RTV votes", 3.0F,
+        ConVarFlags.FCVAR_NONE, new RangeValidator<float>(0.0F, 60.0F));
+
+    public readonly FakeConVar<float> IntermissionMapChangeDelay = new("mcs_intermission_map_change_delay",
+        "Delay in seconds for map change during intermission (Cs2EndMatchScreen)", 10.0F,
+        ConVarFlags.FCVAR_NONE, new RangeValidator<float>(0.0F, 120.0F));
     
     protected override void OnInitialize()
     {
         TrackConVar(VoteStartTimingTime);
         TrackConVar(VoteStartTimingRound);
+        TrackConVar(TimeBasedVoteMapChangeBehaviour);
+        TrackConVar(TimeBasedVoteMapChangeDelay);
+        TrackConVar(RtvMapChangeBehaviour);
+        TrackConVar(RtvMapChangeDelay);
+        TrackConVar(IntermissionMapChangeDelay);
     }
     
     public override void RegisterServices(IServiceCollection services)
@@ -213,13 +252,28 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     private void ChangeToNextMapInternal()
     {
-        
+
         if (NextMap == null)
         {
             Logger.LogError("Failed to change map: next map is null");
             return;
         }
-        
+
+        // Fire PreChangeMapEvent before changing map
+        var preChangeMapEvent = new McsPreChangeMapEvent(GetTextWithPluginPrefix(null, ""), NextMap);
+        var eventResult = _mcsEventManager.FireEvent(preChangeMapEvent);
+
+        // If the event was cancelled, stop the map change
+        if (eventResult == McsEventResult.Stop)
+        {
+            return;
+        }
+
+        // Fire IntermissionEndEvent before changing map
+        var intermissionEndEvent = new McsIntermissionEndEvent(GetTextWithPluginPrefix(null, ""),
+            CurrentMap ?? _mcsInternalMapConfigProviderApi.GetMapConfig(Server.MapName), NextMap);
+        _mcsEventManager.FireEventNoResult(intermissionEndEvent);
+
         if (_mcsPluginConfigProvider.PluginConfig.MapCycleConfig.ShouldStopSourceTvRecording)
         {
             Logger.LogInformation("Executing tv_stoprecord before map change to prevent server crash.");
@@ -229,17 +283,28 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         DebugLogger.LogDebug("Changing to next map!");
         long workshopId = NextMap.WorkshopId;
 
+        var previousMap = CurrentMap ?? _mcsInternalMapConfigProviderApi.GetMapConfig(Server.MapName);
+
         if (workshopId == 0)
         {
             DebugLogger.LogInformation($"No workshop ID defined! We will try change level with {NextMap.MapName}");
             // Use MapUtil.ChangeMap(string) instead of MapUtil.ChangeToWorkshopMap(string)
             // Because, This IMapConfig is no guarantee official map or not.
             MapUtil.ChangeMap(NextMap.MapName);
+
+            // Fire PostChangeMapEvent after changing map
+            var postChangeMapEvent = new McsPostChangeMapEvent(GetTextWithPluginPrefix(null, ""), previousMap, NextMap);
+            _mcsEventManager.FireEventNoResult(postChangeMapEvent);
+
             return;
         }
 
         DebugLogger.LogInformation($"We will try to change map to {NextMap.MapName} with workshop ID: {workshopId}");
         MapUtil.ChangeToWorkshopMap(workshopId);
+
+        // Fire PostChangeMapEvent after changing map
+        var postChangeMapEventWorkshop = new McsPostChangeMapEvent(GetTextWithPluginPrefix(null, ""), previousMap, NextMap);
+        _mcsEventManager.FireEventNoResult(postChangeMapEventWorkshop);
     }
 
     private void OnClientPutInServer(int slot)
@@ -332,16 +397,47 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     {
         if (!_isMapStarted)
             return HookResult.Continue;
-        
+
         if (NextMap == null)
             return HookResult.Continue;
 
-        if (ChangeMapOnNextRoundEnd)
+        // Check if we should change map on round end based on current vote type
+        bool shouldChangeMap = false;
+        float delay = 1.0F;
+
+        if (_isCurrentVoteRtv)
         {
-            ChangeToNextMap(1.0F);
+            // RTV vote handling
+            var rtvBehaviour = (MapChangeBehaviourType)RtvMapChangeBehaviour.Value;
+            if (rtvBehaviour == MapChangeBehaviourType.NextRoundEnd)
+            {
+                shouldChangeMap = true;
+                delay = RtvMapChangeDelay.Value;
+            }
+        }
+        else if (_isCurrentVoteTimeBased)
+        {
+            // Time-based vote handling
+            var timeBasedBehaviour = (MapChangeBehaviourType)TimeBasedVoteMapChangeBehaviour.Value;
+            if (timeBasedBehaviour == MapChangeBehaviourType.NextRoundEnd)
+            {
+                shouldChangeMap = true;
+                delay = TimeBasedVoteMapChangeDelay.Value;
+            }
+        }
+        //else if (ChangeMapOnNextRoundEnd)
+        //{
+        //    // Legacy handling
+        //    shouldChangeMap = true;
+        //    delay = 1.0F;
+        //}
+
+        if (shouldChangeMap)
+        {
+            ChangeToNextMap(delay);
             return HookResult.Continue;
         }
-        
+
         return HookResult.Continue;
     }
 
@@ -353,27 +449,121 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         if (NextMap == null)
             return HookResult.Continue;
 
-        if (ChangeMapOnNextRoundEnd)
+        // Fire IntermissionStartEvent
+        var intermissionStartEvent = new McsIntermissionStartEvent(GetTextWithPluginPrefix(null, ""), NextMap);
+        var eventResult = _mcsEventManager.FireEvent(intermissionStartEvent);
+
+        // If the event was cancelled, stop the map change
+        if (eventResult == McsEventResult.Stop)
+        {
             return HookResult.Continue;
+        }
 
-        McsMapExtendType extendType = _timeLeftUtil.ExtendType;
+        // Check if this is during Cs2EndMatchScreen
+        bool isDuringEndMatchScreen = false;
+        if (_mcsPluginConfigProvider.PluginConfig.GeneralConfig.MapTransitionMethod == MapTransitionMethod.Cs2EndMatchScreen)
+        {
+            // If we're using Cs2EndMatchScreen, use intermission delay
+            isDuringEndMatchScreen = true;
+        }
 
-        if (extendType == McsMapExtendType.TimeLimit && _timeLeftUtil.TimeLimit > 0)
-            return HookResult.Continue;
+        // Determine map change delay based on current vote type and situation
+        float delay = DefaultMapChangeDelay;
 
-        if (extendType == McsMapExtendType.Rounds && _timeLeftUtil.RoundsLeft > 0)
-            return HookResult.Continue;
+        if (isDuringEndMatchScreen)
+        {
+            // Use intermission delay for Cs2EndMatchScreen
+            delay = IntermissionMapChangeDelay.Value;
+        }
+        else if (_isCurrentVoteRtv)
+        {
+            // RTV vote handling
+            var rtvBehaviour = (MapChangeBehaviourType)RtvMapChangeBehaviour.Value;
 
-        if (extendType == McsMapExtendType.RoundTime && _timeLeftUtil.RoundTimeLeft > 0)
-            return HookResult.Continue;
-        
-        // TODO() 将来的に、nativeなmap投票を使うようになる可能性もあるので、取得するConVarを柔軟に変更できるようにする
-        ConVar? mp_competitive_endofmatch_extra_time = ConVar.Find("mp_competitive_endofmatch_extra_time");
+            if (rtvBehaviour == MapChangeBehaviourType.Immediately)
+            {
+                delay = RtvMapChangeDelay.Value;
+            }
+            else if (rtvBehaviour == MapChangeBehaviourType.NextRoundEnd)
+            {
+                // Let OnRoundEnd handle this
+                return HookResult.Continue;
+            }
+            else if (rtvBehaviour == MapChangeBehaviourType.WhenTimeRunsOut)
+            {
+                // Check if time has actually run out
+                McsMapExtendType extendType = _timeLeftUtil.ExtendType;
+                bool timeHasRunOut = false;
 
-        float delay = mp_competitive_endofmatch_extra_time?.GetPrimitiveValue<float>() ?? DefaultRoundRestartDelay;
-        
-        ChangeToNextMap(delay-1);
-        
+                if (extendType == McsMapExtendType.TimeLimit && _timeLeftUtil.TimeLimit <= 0)
+                    timeHasRunOut = true;
+                else if (extendType == McsMapExtendType.Rounds && _timeLeftUtil.RoundsLeft <= 0)
+                    timeHasRunOut = true;
+                else if (extendType == McsMapExtendType.RoundTime && _timeLeftUtil.RoundTimeLeft <= 0)
+                    timeHasRunOut = true;
+
+                if (!timeHasRunOut)
+                    return HookResult.Continue;
+
+                delay = RtvMapChangeDelay.Value;
+            }
+        }
+        else if (_isCurrentVoteTimeBased)
+        {
+            // Time-based vote handling
+            var timeBasedBehaviour = (MapChangeBehaviourType)TimeBasedVoteMapChangeBehaviour.Value;
+
+            if (timeBasedBehaviour == MapChangeBehaviourType.Immediately)
+            {
+                delay = TimeBasedVoteMapChangeDelay.Value;
+            }
+            else if (timeBasedBehaviour == MapChangeBehaviourType.NextRoundEnd)
+            {
+                // Let OnRoundEnd handle this
+                return HookResult.Continue;
+            }
+            else if (timeBasedBehaviour == MapChangeBehaviourType.WhenTimeRunsOut)
+            {
+                // Check if time has actually run out
+                McsMapExtendType extendType = _timeLeftUtil.ExtendType;
+                bool timeHasRunOut = false;
+
+                if (extendType == McsMapExtendType.TimeLimit && _timeLeftUtil.TimeLimit <= 0)
+                    timeHasRunOut = true;
+                else if (extendType == McsMapExtendType.Rounds && _timeLeftUtil.RoundsLeft <= 0)
+                    timeHasRunOut = true;
+                else if (extendType == McsMapExtendType.RoundTime && _timeLeftUtil.RoundTimeLeft <= 0)
+                    timeHasRunOut = true;
+
+                if (!timeHasRunOut)
+                    return HookResult.Continue;
+
+                delay = TimeBasedVoteMapChangeDelay.Value;
+            }
+        }
+        else
+        {
+            // Legacy handling for cases where vote type is not set
+            //if (ChangeMapOnNextRoundEnd)
+            //    return HookResult.Continue;
+
+            McsMapExtendType extendType = _timeLeftUtil.ExtendType;
+
+            if (extendType == McsMapExtendType.TimeLimit && _timeLeftUtil.TimeLimit > 0)
+                return HookResult.Continue;
+
+            if (extendType == McsMapExtendType.Rounds && _timeLeftUtil.RoundsLeft > 0)
+                return HookResult.Continue;
+
+            if (extendType == McsMapExtendType.RoundTime && _timeLeftUtil.RoundTimeLeft > 0)
+                return HookResult.Continue;
+
+            // Use competitive end of match extra time if available
+            ConVar? mp_competitive_endofmatch_extra_time = ConVar.Find("mp_competitive_endofmatch_extra_time");
+            delay = mp_competitive_endofmatch_extra_time?.GetPrimitiveValue<float>() ?? DefaultRoundRestartDelay;
+        }
+
+        ChangeToNextMap(delay - 1);
         return HookResult.Continue;
     }
 
@@ -381,6 +571,8 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private void OnNextMapConfirmed(McsNextMapConfirmedEvent @event)
     {
         NextMap = @event.MapConfig;
+        _isCurrentVoteRtv = false;
+        _isCurrentVoteTimeBased = false;
     }
 
     private void OnMapExtended(McsMapExtendEvent @event)
@@ -457,17 +649,27 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     {
         if (_mcsMapVoteController.CurrentVoteState == McsMapVoteState.NextMapConfirmed)
             return;
-        
+
         _voteStartTimer?.Kill();
         _voteStartTimer = null;
-        _mcsMapVoteController.InitiateVote();
+
+        // Set RTV vote flag
+        _isCurrentVoteRtv = true;
+        _isCurrentVoteTimeBased = false;
+
+        _mcsMapVoteController.InitiateVote(true); // RTV vote
     }
 
     private void InitiateVote()
     {
         _voteStartTimer?.Kill();
         _voteStartTimer = null;
-        _mcsMapVoteController.InitiateVote();
+
+        // Set time-based vote flag
+        _isCurrentVoteRtv = false;
+        _isCurrentVoteTimeBased = true;
+
+        _mcsMapVoteController.InitiateVote(false); // Time-based vote
     }
     
     private void FireNextMapChangedEvent(IMapConfig newConfig)

@@ -24,6 +24,7 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     private IMcsInternalMapConfigProviderApi _mapConfigProvider = null!;
     private HttpClient _httpClient = null!;
     private MapConfigRepository _mapConfigRepository = null!;
+    private HashSet<string> _defaultKeys = new(StringComparer.OrdinalIgnoreCase);
 
     protected override void OnAllPluginsLoaded()
     {
@@ -126,61 +127,48 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
 
                     var defaultMapConfig = GetDefaultMapConfig();
 
+                    if (defaultMapConfig == null)
+                    {
+                        Logger.LogWarning($"[MCS WS] Default map config not found. Skipping map '{mapTitle}' (ID: {currentWorkshopId}). Please ensure config/default.toml exists.");
+                        continue;
+                    }
+
+                    Logger.LogInformation($"[MCS WS] Default config loaded: MapNameAlias='{defaultMapConfig.MapNameAlias}', IsDisabled={defaultMapConfig.IsDisabled}, WorkshopId={defaultMapConfig.WorkshopId}");
+                    
                     var newMapConfig = new NullableMapConfig
                     {
                         MapName = validMapName,
-                        MapNameAlias = mapTitle, // Use original title as alias by default
-                        MapDescription = $"Workshop map: {mapTitle}",
-                        IsDisabled = false,
+                        MapNameAlias = defaultMapConfig.MapNameAlias,
+                        MapDescription = _defaultKeys.Contains("MapDescription") ? $"Workshop map: {mapTitle}" : null,
+                        IsDisabled = defaultMapConfig.IsDisabled,
                         WorkshopId = currentWorkshopId,
-                        OnlyNomination = false
+                        OnlyNomination = defaultMapConfig.OnlyNomination,
+                        MaxExtends = defaultMapConfig.MaxExtends,
+                        MaxExtCommandUses = defaultMapConfig.MaxExtCommandUses,
+                        MapTime = defaultMapConfig.MapTime,
+                        ExtendTimePerExtends = defaultMapConfig.ExtendTimePerExtends,
+                        MapRounds = defaultMapConfig.MapRounds,
+                        ExtendRoundsPerExtends = defaultMapConfig.ExtendRoundsPerExtends,
+                        Cooldown = defaultMapConfig.Cooldown,
+                        RequiredPermissions = defaultMapConfig.RequiredPermissions != null ? new List<string>(defaultMapConfig.RequiredPermissions) : new List<string>(),
+                        RestrictToAllowedUsersOnly = defaultMapConfig.RestrictToAllowedUsersOnly,
+                        AllowedSteamIds = defaultMapConfig.AllowedSteamIds != null ? new List<ulong>(defaultMapConfig.AllowedSteamIds) : new List<ulong>(),
+                        DisallowedSteamIds = defaultMapConfig.DisallowedSteamIds != null ? new List<ulong>(defaultMapConfig.DisallowedSteamIds) : new List<ulong>(),
+                        MaxPlayers = defaultMapConfig.MaxPlayers,
+                        MinPlayers = defaultMapConfig.MinPlayers,
+                        ProhibitAdminNomination = defaultMapConfig.ProhibitAdminNomination,
+                        DaysAllowed = defaultMapConfig.DaysAllowed != null ? new List<DayOfWeek>(defaultMapConfig.DaysAllowed) : new List<DayOfWeek>(),
+                        AllowedTimeRanges = defaultMapConfig.AllowedTimeRanges != null ? new List<ITimeRange>(defaultMapConfig.AllowedTimeRanges) : new List<ITimeRange>(),
+                        GroupSettingsArray = defaultMapConfig.GroupSettingsArray != null ? new List<string>(defaultMapConfig.GroupSettingsArray) : new List<string>(),
+                        GroupSettings = new List<IMapGroupSettings>(),
+                        ExtraConfiguration = new Dictionary<string, Dictionary<string, string>>()
                     };
-
-                    if (defaultMapConfig != null)
-                    {
-                        newMapConfig.IsDisabled = defaultMapConfig.IsDisabled;
-                        newMapConfig.OnlyNomination = defaultMapConfig.OnlyNomination;
-                        newMapConfig.MaxExtends = defaultMapConfig.MaxExtends;
-                        newMapConfig.MaxExtCommandUses = defaultMapConfig.MaxExtCommandUses;
-                        newMapConfig.MapTime = defaultMapConfig.MapTime;
-                        newMapConfig.ExtendTimePerExtends = defaultMapConfig.ExtendTimePerExtends;
-                        newMapConfig.MapRounds = defaultMapConfig.MapRounds;
-                        newMapConfig.ExtendRoundsPerExtends = defaultMapConfig.ExtendRoundsPerExtends;
-                        newMapConfig.Cooldown = defaultMapConfig.Cooldown;
-                        newMapConfig.RequiredPermissions = defaultMapConfig.RequiredPermissions ?? new List<string>();
-                        newMapConfig.RestrictToAllowedUsersOnly = defaultMapConfig.RestrictToAllowedUsersOnly;
-                        newMapConfig.AllowedSteamIds = defaultMapConfig.AllowedSteamIds ?? new List<ulong>();
-                        newMapConfig.DisallowedSteamIds = defaultMapConfig.DisallowedSteamIds ?? new List<ulong>();
-                        newMapConfig.MaxPlayers = defaultMapConfig.MaxPlayers;
-                        newMapConfig.MinPlayers = defaultMapConfig.MinPlayers;
-                        newMapConfig.ProhibitAdminNomination = defaultMapConfig.ProhibitAdminNomination;
-                        newMapConfig.DaysAllowed = defaultMapConfig.DaysAllowed ?? new List<DayOfWeek>();
-                        newMapConfig.AllowedTimeRanges = defaultMapConfig.AllowedTimeRanges ?? new List<ITimeRange>();
-                        newMapConfig.GroupSettingsArray = defaultMapConfig.GroupSettingsArray ?? new List<string>();
-                    }
-                    else
-                    {
-                        newMapConfig.MaxExtends = 3;
-                        newMapConfig.MaxExtCommandUses = 1;
-                        newMapConfig.MapTime = 20;
-                        newMapConfig.ExtendTimePerExtends = 15;
-                        newMapConfig.MapRounds = 10;
-                        newMapConfig.ExtendRoundsPerExtends = 5;
-                        newMapConfig.Cooldown = 0;
-                        newMapConfig.RequiredPermissions = new List<string>();
-                        newMapConfig.RestrictToAllowedUsersOnly = false;
-                        newMapConfig.AllowedSteamIds = new List<ulong>();
-                        newMapConfig.DisallowedSteamIds = new List<ulong>();
-                        newMapConfig.MaxPlayers = 0;
-                        newMapConfig.MinPlayers = 0;
-                        newMapConfig.ProhibitAdminNomination = false;
-                        newMapConfig.DaysAllowed = new List<DayOfWeek>();
-                        newMapConfig.AllowedTimeRanges = new List<ITimeRange>();
-                        newMapConfig.GroupSettingsArray = new List<string>();
-                    }
-
+                    
                     try
                     {
+                        string tomlContent = ConvertMapConfigToTomlString(newMapConfig, _defaultKeys);
+                        Logger.LogInformation($"[MCS WS] Generated TOML content for '{mapTitle}':\n{tomlContent}");
+
                         if (AddMapConfigToSystem(newMapConfig, validMapName))
                         {
                             Logger.LogInformation($"[MCS WS] Created map settings for '{mapTitle}' (ID: {currentWorkshopId})");
@@ -232,7 +220,10 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     {
         string configDir = Path.Combine(Plugin.ModuleDirectory, "config");
         string mapsTomlPath = Path.Combine(configDir, "maps.toml");
-        
+
+        Logger.LogInformation($"[MCS WS] Checking for config files in: {configDir}");
+        Logger.LogInformation($"[MCS WS] maps.toml exists: {File.Exists(mapsTomlPath)}");
+
         // Check if using unified configuration (maps.toml exists)
         if (File.Exists(mapsTomlPath))
         {
@@ -257,6 +248,7 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
             {
                 if (settingsTable.TryGetValue("Default", out var defaultObj) && defaultObj is TomlTable defaultTable)
                 {
+                    _defaultKeys = new HashSet<string>(defaultTable.Keys, StringComparer.OrdinalIgnoreCase);
                     return ParseDefaultConfigFromTomlTable(defaultTable);
                 }
             }
@@ -273,6 +265,9 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     private NullableMapConfig? GetDefaultMapConfigFromSplitFile(string configDir)
     {
         string defaultConfigPath = Path.Combine(configDir, "default.toml");
+        Logger.LogInformation($"[MCS WS] Checking for default.toml at: {defaultConfigPath}");
+        Logger.LogInformation($"[MCS WS] default.toml exists: {File.Exists(defaultConfigPath)}");
+
         if (!File.Exists(defaultConfigPath))
         {
             return null;
@@ -281,8 +276,23 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         try
         {
             string tomlContent = File.ReadAllText(defaultConfigPath);
+            Logger.LogInformation($"[MCS WS] default.toml content:\n{tomlContent}");
             var toml = Toml.ToModel(tomlContent);
-            return ParseDefaultConfigFromTomlTable(toml);
+
+            // Look for MapChooserSharpSettings.Default section
+            if (toml.TryGetValue("MapChooserSharpSettings", out var settingsObj) && settingsObj is TomlTable settingsTable)
+            {
+                if (settingsTable.TryGetValue("Default", out var defaultObj) && defaultObj is TomlTable defaultTable)
+                {
+                    _defaultKeys = new HashSet<string>(defaultTable.Keys, StringComparer.OrdinalIgnoreCase);
+                    var result = ParseDefaultConfigFromTomlTable(defaultTable);
+                    Logger.LogInformation($"[MCS WS] Parsed default config: MapNameAlias='{result?.MapNameAlias}', IsDisabled={result?.IsDisabled}, WorkshopId={result?.WorkshopId}");
+                    return result;
+                }
+            }
+
+            Logger.LogWarning($"[MCS WS] MapChooserSharpSettings.Default section not found in default.toml");
+            return null;
         }
         catch (Exception ex)
         {
@@ -378,7 +388,7 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         try
         {
             string existingContent = File.ReadAllText(mapsTomlPath);
-            string newMapSection = ConvertMapConfigToTomlSectionString(mapConfig, validMapName);
+            string newMapSection = ConvertMapConfigToTomlSectionString(mapConfig, validMapName, _defaultKeys);
             
             // Append the new map section to the existing file
             string updatedContent = existingContent.TrimEnd() + Environment.NewLine + Environment.NewLine + newMapSection;
@@ -398,7 +408,7 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     {
         try
         {
-            string mapConfigToml = ConvertMapConfigToTomlSectionString(mapConfig, validMapName);
+            string mapConfigToml = ConvertMapConfigToTomlSectionString(mapConfig, validMapName, _defaultKeys);
             
             // Individual map files are typically stored in a 'maps' subdirectory within 'config'
             string mapsDir = Path.Combine(configDir, "synced_workshopmaps");
@@ -416,15 +426,15 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         }
     }
 
-    private string ConvertMapConfigToTomlSectionString(NullableMapConfig mapConfig, string validMapName)
+    private string ConvertMapConfigToTomlSectionString(NullableMapConfig mapConfig, string validMapName, HashSet<string> allowedKeys)
     {
         var sb = new StringBuilder();
         
         // Add section header for unified file
         sb.AppendLine($"[{validMapName}]");
         
-        // Add the map configuration content
-        sb.Append(ConvertMapConfigToTomlString(mapConfig));
+        // Add the map configuration content based only on keys present in default
+        sb.Append(ConvertMapConfigToTomlString(mapConfig, allowedKeys));
         
         return sb.ToString();
     }
@@ -434,10 +444,10 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         var sb = new StringBuilder();
 
         // ---- string ----
-        if (!string.IsNullOrEmpty(mapConfig.MapNameAlias))
-            sb.AppendLine($"MapNameAlias = \"{TomlEncode(mapConfig.MapNameAlias!)}\"");
-        if (!string.IsNullOrEmpty(mapConfig.MapDescription))
-            sb.AppendLine($"MapDescription = \"{TomlEncode(mapConfig.MapDescription!)}\"");
+        if (mapConfig.MapNameAlias != null)
+            sb.AppendLine($"MapNameAlias = \"{TomlEncode(mapConfig.MapNameAlias)}\"");
+        if (mapConfig.MapDescription != null)
+            sb.AppendLine($"MapDescription = \"{TomlEncode(mapConfig.MapDescription)}\"");
 
         // ---- bool ----
         if (mapConfig.IsDisabled.HasValue)
@@ -497,6 +507,107 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         return sb.ToString();
     }
 
+    // Overload: write only keys that exist in default.toml
+    private string ConvertMapConfigToTomlString(NullableMapConfig mapConfig, HashSet<string> allowedKeys)
+    {
+        var sb = new StringBuilder();
+
+        // ---- string ----
+        if (allowedKeys.Contains("MapNameAlias"))
+            sb.AppendLine($"MapNameAlias = \"{TomlEncode(mapConfig.MapNameAlias ?? string.Empty)}\"");
+        if (allowedKeys.Contains("MapDescription") && mapConfig.MapDescription != null)
+            sb.AppendLine($"MapDescription = \"{TomlEncode(mapConfig.MapDescription)}\"");
+
+        // ---- bool ----
+        if (allowedKeys.Contains("IsDisabled") && mapConfig.IsDisabled.HasValue)
+            sb.AppendLine($"IsDisabled = {mapConfig.IsDisabled.Value.ToString().ToLowerInvariant()}");
+        if (allowedKeys.Contains("OnlyNomination") && mapConfig.OnlyNomination.HasValue)
+            sb.AppendLine($"OnlyNomination = {mapConfig.OnlyNomination.Value.ToString().ToLowerInvariant()}");
+        if (allowedKeys.Contains("RestrictToAllowedUsersOnly") && mapConfig.RestrictToAllowedUsersOnly.HasValue)
+            sb.AppendLine($"RestrictToAllowedUsersOnly = {mapConfig.RestrictToAllowedUsersOnly.Value.ToString().ToLowerInvariant()}");
+        if (allowedKeys.Contains("ProhibitAdminNomination") && mapConfig.ProhibitAdminNomination.HasValue)
+            sb.AppendLine($"ProhibitAdminNomination = {mapConfig.ProhibitAdminNomination.Value.ToString().ToLowerInvariant()}");
+
+        // ---- numeric ----
+        if (allowedKeys.Contains("WorkshopId") && mapConfig.WorkshopId.HasValue && mapConfig.WorkshopId.Value > 0)
+            sb.AppendLine($"WorkshopId = {mapConfig.WorkshopId.Value}");
+        if (allowedKeys.Contains("MaxExtends") && mapConfig.MaxExtends.HasValue)
+            sb.AppendLine($"MaxExtends = {mapConfig.MaxExtends.Value}");
+        if (allowedKeys.Contains("MaxExtCommandUses") && mapConfig.MaxExtCommandUses.HasValue)
+            sb.AppendLine($"MaxExtCommandUses = {mapConfig.MaxExtCommandUses.Value}");
+        if (allowedKeys.Contains("MapTime") && mapConfig.MapTime.HasValue)
+            sb.AppendLine($"MapTime = {mapConfig.MapTime.Value}");
+        if (allowedKeys.Contains("ExtendTimePerExtends") && mapConfig.ExtendTimePerExtends.HasValue)
+            sb.AppendLine($"ExtendTimePerExtends = {mapConfig.ExtendTimePerExtends.Value}");
+        if (allowedKeys.Contains("MapRounds") && mapConfig.MapRounds.HasValue)
+            sb.AppendLine($"MapRounds = {mapConfig.MapRounds.Value}");
+        if (allowedKeys.Contains("ExtendRoundsPerExtends") && mapConfig.ExtendRoundsPerExtends.HasValue)
+            sb.AppendLine($"ExtendRoundsPerExtends = {mapConfig.ExtendRoundsPerExtends.Value}");
+        if (allowedKeys.Contains("Cooldown") && mapConfig.Cooldown.HasValue)
+            sb.AppendLine($"Cooldown = {mapConfig.Cooldown.Value}");
+        if (allowedKeys.Contains("MaxPlayers") && mapConfig.MaxPlayers.HasValue)
+            sb.AppendLine($"MaxPlayers = {mapConfig.MaxPlayers.Value}");
+        if (allowedKeys.Contains("MinPlayers") && mapConfig.MinPlayers.HasValue)
+            sb.AppendLine($"MinPlayers = {mapConfig.MinPlayers.Value}");
+
+        // ---- collections ----
+        if (allowedKeys.Contains("RequiredPermissions"))
+        {
+            if (mapConfig.RequiredPermissions is { Count: > 0 })
+                sb.AppendLine($"RequiredPermissions = [{string.Join(", ", mapConfig.RequiredPermissions.Select(p => $"\"{TomlEncode(p)}\""))}]");
+            else
+                sb.AppendLine("RequiredPermissions = []");
+        }
+
+        if (allowedKeys.Contains("AllowedSteamIds"))
+        {
+            if (mapConfig.AllowedSteamIds is { Count: > 0 })
+                sb.AppendLine($"AllowedSteamIds = [{string.Join(", ", mapConfig.AllowedSteamIds)}]");
+            else
+                sb.AppendLine("AllowedSteamIds = []");
+        }
+
+        if (allowedKeys.Contains("DisallowedSteamIds"))
+        {
+            if (mapConfig.DisallowedSteamIds is { Count: > 0 })
+                sb.AppendLine($"DisallowedSteamIds = [{string.Join(", ", mapConfig.DisallowedSteamIds)}]");
+            else
+                sb.AppendLine("DisallowedSteamIds = []");
+        }
+
+        if (allowedKeys.Contains("DaysAllowed"))
+        {
+            if (mapConfig.DaysAllowed is { Count: > 0 })
+                sb.AppendLine($"DaysAllowed = [{string.Join(", ", mapConfig.DaysAllowed.Select(d => $"\"{d}\""))}]");
+            else
+                sb.AppendLine("DaysAllowed = []");
+        }
+
+        if (allowedKeys.Contains("AllowedTimeRanges"))
+        {
+            if (mapConfig.AllowedTimeRanges is { Count: > 0 })
+            {
+                var timeRangesStr = mapConfig.AllowedTimeRanges.Select(tr =>
+                    $"{{ Start = \"{tr.StartTime:hh\\:mm}\", End = \"{tr.EndTime:hh\\:mm}\" }}"
+                );
+                sb.AppendLine($"AllowedTimeRanges = [{string.Join(", ", timeRangesStr)}]");
+            }
+            else
+            {
+                sb.AppendLine("AllowedTimeRanges = []");
+            }
+        }
+
+        if (allowedKeys.Contains("GroupSettings"))
+        {
+            if (mapConfig.GroupSettingsArray is { Count: > 0 })
+                sb.AppendLine($"GroupSettings = [{string.Join(", ", mapConfig.GroupSettingsArray.Select(g => $"\"{TomlEncode(g)}\""))}]");
+            else
+                sb.AppendLine("GroupSettings = []");
+        }
+
+        return sb.ToString();
+    }
     private string TomlEncode(string value)
     {
         if (value == null) return string.Empty;

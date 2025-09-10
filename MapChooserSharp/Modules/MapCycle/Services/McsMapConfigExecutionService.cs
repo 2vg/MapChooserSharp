@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
@@ -8,6 +9,7 @@ using MapChooserSharp.Modules.PluginConfig.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TNCSSPluginFoundation.Models.Plugin;
+using ZLinq;
 
 namespace MapChooserSharp.Modules.MapCycle.Services;
 
@@ -135,7 +137,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
             case McsMapConfigExecutionType.StartWithMach:
                 if (mcsMapConfigType == McsMapConfigType.Map)
                 {
-                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().StartsWith(m.Key)).Select(m => m.Value));
+                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().StartsWith(m.Key)).Select(m => m.Value).ToArray());
                 }
                 else
                 {
@@ -146,7 +148,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
             case McsMapConfigExecutionType.PartialMatch:
                 if (mcsMapConfigType == McsMapConfigType.Map)
                 {
-                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().Contains(m.Key)).Select(m => m.Value));
+                    cfgs.AddRange(_mapConfigs.Where(m => possibleConfigNames.First().Contains(m.Key)).Select(m => m.Value).ToArray());
                 }
                 else
                 {
