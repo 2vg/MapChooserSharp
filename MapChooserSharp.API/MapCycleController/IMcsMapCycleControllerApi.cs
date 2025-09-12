@@ -62,7 +62,8 @@ public interface IMcsMapCycleControllerApi
 
     /// <summary>
     /// Change to next map <br/>
-    /// If next map is null, this method will fail and do nothing.
+    /// If next map is null, this method will try to use the configured default map.
+    /// If no default map is configured, this method will fail and do nothing.
     /// </summary>
     /// <param name="seconds">Seconds to change map</param>
     public void ChangeToNextMap(float seconds);

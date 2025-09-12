@@ -184,7 +184,13 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
         {
             throw new InvalidOperationException("MapCycle.GroupConfigDirectoryPath is not found or invalid");
         }
-        
+
+        string? defaultMap = null;
+        if (mapCycleTable.TryGetValue("DefaultMap", out var defaultMapObj) && defaultMapObj is string defaultMapString)
+        {
+            defaultMap = defaultMapString;
+        }
+
         return new McsMapCycleConfig(
             defaultMaxExtends,
             defaultExtCmdUses,
@@ -193,7 +199,8 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
             shouldStopSourceTvRecordingBool,
             mapConfigExecutionType,
             mapConfigDirectoryPathString,
-            groupConfigDirectoryPathString);
+            groupConfigDirectoryPathString,
+            defaultMap);
     }
 
     private IMcsNominationConfig ParseNominationConfig(TomlTable tomlModel)
@@ -589,6 +596,10 @@ MapConfigDirectoryPath = ""MapChooserSharp/maps/""
 
 # Relative path from game/csgo/cfg/ directory (e.g. if config directory located in game/csgo/cfg/MapChooserSharp/groups/, then put MapChooserSharp/groups/)
 GroupConfigDirectoryPath = ""MapChooserSharp/groups/""
+
+# Default map used when ChangeMap is called without specifying NextMap
+# If not set or empty, ChangeMap will fail when NextMap is null
+DefaultMap = ""de_dust2""
 
 
 [MapVote]

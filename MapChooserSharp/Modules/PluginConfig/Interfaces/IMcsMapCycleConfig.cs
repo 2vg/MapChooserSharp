@@ -17,6 +17,8 @@ internal interface IMcsMapCycleConfig
     internal McsMapConfigExecutionType MapConfigExecutionType { get; }
     
     internal string MapConfigDirectoryPath { get; }
-    
+
     internal string GroupConfigDirectoryPath { get; }
+
+    internal string? DefaultMap { get; }
 }

@@ -253,20 +253,24 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private void ChangeToNextMapInternal()
     {
 
-        if (NextMap == null)
+        if (NextMap == null || (NextMap != null && string.IsNullOrEmpty(NextMap.MapName)))
         {
-            Logger.LogError("Failed to change map: next map is null");
-            return;
-        }
-
-        // Fire PreChangeMapEvent before changing map
-        var preChangeMapEvent = new McsPreChangeMapEvent(GetTextWithPluginPrefix(null, ""), NextMap);
-        var eventResult = _mcsEventManager.FireEvent(preChangeMapEvent);
-
-        // If the event was cancelled, stop the map change
-        if (eventResult == McsEventResult.Stop)
-        {
-            return;
+            var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap;
+            if (!string.IsNullOrEmpty(defaultMapName))
+            {
+                SetNextMap(defaultMapName);
+                if (NextMap == null)
+                {
+                    Logger.LogError($"Failed to change map: default map '{defaultMapName}' could not be found");
+                    return;
+                }
+                Logger.LogInformation($"Using default map '{defaultMapName}' since next map was null");
+            }
+            else
+            {
+                Logger.LogError("Failed to change map: next map is null and no default map configured");
+                return;
+            }
         }
 
         // Fire IntermissionEndEvent before changing map
@@ -292,19 +296,11 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
             // Because, This IMapConfig is no guarantee official map or not.
             MapUtil.ChangeMap(NextMap.MapName);
 
-            // Fire PostChangeMapEvent after changing map
-            var postChangeMapEvent = new McsPostChangeMapEvent(GetTextWithPluginPrefix(null, ""), previousMap, NextMap);
-            _mcsEventManager.FireEventNoResult(postChangeMapEvent);
-
             return;
         }
 
         DebugLogger.LogInformation($"We will try to change map to {NextMap.MapName} with workshop ID: {workshopId}");
         MapUtil.ChangeToWorkshopMap(workshopId);
-
-        // Fire PostChangeMapEvent after changing map
-        var postChangeMapEventWorkshop = new McsPostChangeMapEvent(GetTextWithPluginPrefix(null, ""), previousMap, NextMap);
-        _mcsEventManager.FireEventNoResult(postChangeMapEventWorkshop);
     }
 
     private void OnClientPutInServer(int slot)

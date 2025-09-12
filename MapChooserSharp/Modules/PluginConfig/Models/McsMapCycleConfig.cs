@@ -3,7 +3,7 @@ using MapChooserSharp.Modules.PluginConfig.Interfaces;
 
 namespace MapChooserSharp.Modules.PluginConfig.Models;
 
-public class McsMapCycleConfig(int defaultMaxExtends, int fallbackMaxExtCommandUses, int fallbackExtendTimePerExtends, int fallbackExtendRoundsPerExtends, bool shouldStopSourceTvRecording, McsMapConfigExecutionType mapConfigExecutionType, string mapConfigDirectoryPath, string groupConfigDirectoryPath) : IMcsMapCycleConfig
+public class McsMapCycleConfig(int defaultMaxExtends, int fallbackMaxExtCommandUses, int fallbackExtendTimePerExtends, int fallbackExtendRoundsPerExtends, bool shouldStopSourceTvRecording, McsMapConfigExecutionType mapConfigExecutionType, string mapConfigDirectoryPath, string groupConfigDirectoryPath, string? defaultMap) : IMcsMapCycleConfig
 {
     public int FallbackDefaultMaxExtends { get; } = defaultMaxExtends;
     public int FallbackMaxExtCommandUses { get; } = fallbackMaxExtCommandUses;
@@ -13,4 +13,5 @@ public class McsMapCycleConfig(int defaultMaxExtends, int fallbackMaxExtCommandU
     public string GroupConfigDirectoryPath { get; } = groupConfigDirectoryPath;
     public int FallbackExtendTimePerExtends { get; } = fallbackExtendTimePerExtends;
     public int FallbackExtendRoundsPerExtends { get; } = fallbackExtendRoundsPerExtends;
+    public string? DefaultMap { get; } = defaultMap;
 }
