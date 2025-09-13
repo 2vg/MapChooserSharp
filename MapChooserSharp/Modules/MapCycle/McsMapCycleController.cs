@@ -254,7 +254,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private void ChangeToNextMapInternal()
     {
 
-        if (NextMap == null || (NextMap != null && string.IsNullOrEmpty(NextMap.MapName)))
+        if (NextMap == null)
         {
             var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap;
             if (!string.IsNullOrEmpty(defaultMapName))
