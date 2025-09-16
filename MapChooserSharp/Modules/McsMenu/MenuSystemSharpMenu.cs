@@ -1,16 +1,30 @@
 using CounterStrikeSharp.API.Core;
-using CS2MenuManager.API;
-using CS2MenuManager.API.Class;
 using TNCSSPluginFoundation;
+using MenuSystemSharp.API;
+using Microsoft.Extensions.Logging;
 
 namespace MapChooserSharp.Modules.McsMenu;
 
 public static class MenuSystemSharpHelper
 {
-    // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
-    public static CS2MenuManager.API.Menu.MenuSystemSharpMenu CreateMenu(string title, TncssPluginBase plugin, string position = "center")
+    /// <summary>
+    /// 直接MenuSystemのAPIを使用してメニューを作成
+    /// </summary>
+    /// <param name="title">メニューのタイトル</param>
+    /// <param name="plugin">プラグインインスタンス</param>
+    /// <param name="position">位置（互換性のため残しているが使用されない）</param>
+    /// <returns>作成されたメニューインスタンス</returns>
+    public static IMenuInstance? CreateMenu(string title, TncssPluginBase plugin, string position = "center")
     {
-        // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
-        return MenuManager.CreateMenu<CS2MenuManager.API.Menu.MenuSystemSharpMenu>(title, plugin);
+        var menuSystem = MenuSystem.Instance;
+        if (menuSystem == null || !menuSystem.IsAvailable)
+        {
+            plugin.Logger.LogError("MenuSystem is not available");
+            return null;
+        }
+
+        var menu = menuSystem.CreateMenu();
+        menu.Title = title;
+        return menu;
     }
 }

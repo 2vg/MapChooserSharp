@@ -162,8 +162,8 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         {
             if (_mapVoteContent == null)
                 return -1;
-
-            return _mapVoteContent.GetVotingMaps().Sum(mapVoteData => mapVoteData.GetVoters().Count);
+ 
+            return _totalVotes;
         }
     }
 
@@ -179,11 +179,17 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
     private bool ShouldUseAliasMapNameIfAvailable => _mcsPluginConfigProvider.PluginConfig.GeneralConfig.ShouldUseAliasMapNameIfAvailable;
 
     private readonly Random _random = new();
-
-
+ 
+ 
     private IMapVoteContent? _mapVoteContent;
-
+ 
     private Timer? _mapVoteTimer;
+ 
+    // Incremental vote counters (computational optimization; no UI behavior change)
+    private int _participantsCount;
+    private int _totalVotes;
+    private int[]? _votesPerOption; // length == number of vote options
+    private readonly Dictionary<int, byte> _votedIndexBySlot = new(); // slot -> voteIndex
 
     #region Vote Logic
 
@@ -412,9 +418,15 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         }
 
         CurrentVoteState = McsMapVoteState.Voting;
-
+ 
         var voteParticipants = _mapVoteContent.GetVoteParticipants();
-
+ 
+        // Initialize incremental counters
+        _participantsCount = voteParticipants.Count;
+        _totalVotes = 0;
+        _votedIndexBySlot.Clear();
+        _votesPerOption = new int[_mapVoteContent.GetVotingMaps().Count];
+ 
         ShowVoteMenu();
 
         // +1 seconds for get actual seconds
@@ -477,13 +489,10 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
             // Remove nullable map config (extend map and don't change)
             _mapVoteContent.GetVotingMaps().RemoveAll(data => data.MapConfig == null);
-
-            var pickedMaps = _mapVoteContent
-                .GetVotingMaps()
-                .OrderBy(_ => _random.Next())
-                .Take(1);
-
-            var mapCfg = pickedMaps.First().MapConfig!;
+ 
+            // O(1) random pick
+            var list = _mapVoteContent.GetVotingMaps();
+            var mapCfg = list[_random.Next(list.Count)].MapConfig!;
 
             PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", mapCfg.MapName);
             _mapVoteSoundPlayer.PlayVoteFinishedSoundToAll(false);
@@ -640,9 +649,15 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         }
 
         CurrentVoteState = McsMapVoteState.RunoffVoting;
-
+ 
         var voteParticipants = _mapVoteContent.GetVoteParticipants();
-
+ 
+        // Initialize incremental counters for runoff vote
+        _participantsCount = voteParticipants.Count;
+        _totalVotes = 0;
+        _votedIndexBySlot.Clear();
+        _votesPerOption = new int[_mapVoteContent.GetVotingMaps().Count];
+ 
         DebugLogger.LogDebug($"Runoff vote participants: {voteParticipants.Count}");
 
         ShowVoteMenu();
@@ -707,13 +722,10 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
             // Remove nullable map config (extend map and don't change)
             _mapVoteContent.GetVotingMaps().RemoveAll(data => data.MapConfig == null);
-
-            var pickedMaps = _mapVoteContent
-                .GetVotingMaps()
-                .OrderBy(_ => _random.Next())
-                .Take(1);
-
-            var mapCfg = pickedMaps.First().MapConfig!;
+ 
+            // O(1) random pick
+            var list = _mapVoteContent.GetVotingMaps();
+            var mapCfg = list[_random.Next(list.Count)].MapConfig!;
 
             PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", mapCfg.MapName);
             FireNextMapConfirmedEvent(mapCfg);
@@ -809,6 +821,13 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         _mapVoteContent = null;
         _mapVoteTimer?.Kill();
         _mapVoteTimer = null;
+ 
+        // Reset incremental counters
+        _participantsCount = 0;
+        _totalVotes = 0;
+        _votesPerOption = null;
+        _votedIndexBySlot.Clear();
+ 
         CurrentVoteState = McsMapVoteState.NoActiveVote;
     }
 
@@ -1005,29 +1024,53 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
     private bool IsPlayerVotedToAnyMap(CCSPlayerController player)
     {
-        return _mapVoteContent?.GetVotingMaps().Count(c => c.GetVoters().Contains(player.Slot)) > 0;
+        // O(1) check using incremental index map
+        return _votedIndexBySlot.ContainsKey(player.Slot);
     }
-
-
-
 
     private void CastPlayerVote(CCSPlayerController player, byte voteIndex)
     {
         if (_mapVoteContent == null)
             return;
-
+ 
         DebugLogger.LogDebug($"Player casted a vote! Player: {player.PlayerName}, VoteIndex: {voteIndex}");
-        _mapVoteContent.GetVotingMaps()[voteIndex].AddVoter(player.Slot);
-
-
+ 
+        // Incremental update of vote counts (supports revote O(1))
+        if (_votedIndexBySlot.TryGetValue(player.Slot, out var prevIndex))
+        {
+            if (prevIndex != voteIndex)
+            {
+                // Move vote to another option
+                _mapVoteContent.GetVotingMaps()[(int)prevIndex].RemoveVoter(player.Slot);
+                if (_votesPerOption != null && prevIndex < _votesPerOption.Length)
+                    _votesPerOption[prevIndex]--;
+ 
+                _mapVoteContent.GetVotingMaps()[voteIndex].AddVoter(player.Slot);
+                if (_votesPerOption != null && voteIndex < _votesPerOption.Length)
+                    _votesPerOption[voteIndex]++;
+ 
+                _votedIndexBySlot[player.Slot] = voteIndex;
+            }
+            // else same index, do nothing
+        }
+        else
+        {
+            // First vote for this player
+            _mapVoteContent.GetVotingMaps()[voteIndex].AddVoter(player.Slot);
+            if (_votesPerOption != null && voteIndex < _votesPerOption.Length)
+                _votesPerOption[voteIndex]++;
+            _votedIndexBySlot[player.Slot] = voteIndex;
+            _totalVotes++; // Increment total votes only for first time voting
+        }
+ 
         if (!_mapVoteContent.VoteUi.TryGetValue(player.Slot, out var voteUi))
         {
             DebugLogger.LogDebug($"Player {player.PlayerName} casted the vote. but somehow they are not a participant of current vote so vote menu is failed to close!");
             return;
         }
-
+ 
         IMapVoteData votedMap = _mapVoteContent.GetVotingMaps()[voteIndex];
-
+ 
         if (_mcsPluginConfigProvider.PluginConfig.VoteConfig.ShouldPrintVoteToChat)
         {
             foreach (CCSPlayerController cl in Utilities.GetPlayers().Where(p => p is { IsBot: false, IsHLTV: false }))
@@ -1035,18 +1078,18 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
                 cl.PrintToChat(LocalizeWithPluginPrefix(cl, "MapVote.Broadcast.VoteCast", player.PlayerName, GetMapName(votedMap, cl).ToString()));
             }
         }
-
-
+ 
+        // Close player's menu (UI behavior unchanged)
         voteUi.CloseMenu();
-
-        if (AllVotesCount >= _mapVoteContent.GetVoteParticipants().Count)
+ 
+        // O(1) completion check
+        if (_totalVotes >= _participantsCount)
         {
             if (CurrentVoteState == McsMapVoteState.Voting)
             {
                 EndVote();
             }
-
-            if (CurrentVoteState == McsMapVoteState.RunoffVoting)
+            else if (CurrentVoteState == McsMapVoteState.RunoffVoting)
             {
                 EndRunoffVote();
             }
@@ -1062,15 +1105,29 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
     {
         if (_mapVoteContent == null)
             return;
-
+ 
         DebugLogger.LogDebug($"Trying to remove player vote for slot: {slot}");
+ 
+        // Fast path using incremental structures
+        if (_votedIndexBySlot.TryGetValue(slot, out var votedIndex))
+        {
+            _mapVoteContent.GetVotingMaps()[votedIndex].RemoveVoter(slot);
+            if (_votesPerOption != null && votedIndex < _votesPerOption.Length)
+                _votesPerOption[votedIndex]--;
+            _votedIndexBySlot.Remove(slot);
+            // Decrease total votes because this player is no longer counted as voted
+            if (_totalVotes > 0) _totalVotes--;
+            return;
+        }
+ 
+        // Fallback (in case incremental map is out-of-sync for any reason)
         var mapVoteData = GetPlayerVotedMap(slot);
         mapVoteData?.RemoveVoter(slot);
     }
 
-
     private List<IMapConfig> PickRandomFilteredMaps(List<IMapConfig> unusedMapList, int numToPick)
     {
+#if DEBUG
         // This method will not use Linq to make debug logging easier
         var shuffledMaps = unusedMapList
             .OrderBy(_ => _random.Next()).ToList();
@@ -1081,51 +1138,86 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         var cooldownEndedMaps = disabledMaps.Where(map => map.MapCooldown.CurrentCooldown <= 0).ToList();
         DebugLogger.LogTrace($"[Filter | Map Cooldown] {cooldownEndedMaps.Count} maps found.");
 
-
         var alsoGroupCooldownEnded = cooldownEndedMaps.Where(map =>
             !map.GroupSettings.Any() ||
             map.GroupSettings.Count(setting => setting.GroupCooldown.CurrentCooldown > 0) == 0).ToList();
         DebugLogger.LogTrace($"[Filter | Gorup Cooldown] {cooldownEndedMaps.Count} maps found.");
 
-
         var notRestrectedToNominationOnly = alsoGroupCooldownEnded.Where(map => !map.OnlyNomination).ToList();
         DebugLogger.LogTrace($"[Filter | No Nomination Restriction] {notRestrectedToNominationOnly.Count} maps found.");
-
 
         var notRestrictedToCertainUsers = notRestrectedToNominationOnly.Where(map => !map.NominationConfig.RestrictToAllowedUsersOnly).ToList();
         DebugLogger.LogTrace($"[Filter | Not Restricted Certain users] {notRestrictedToCertainUsers.Count} maps found.");
 
-
         var greaterThanMinPlayers = notRestrictedToCertainUsers.Where(map => map.NominationConfig.MinPlayers == 0 || map.NominationConfig.MinPlayers <= Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false })).ToList();
         DebugLogger.LogTrace($"[Filter | Greater Than Min Players] {greaterThanMinPlayers.Count} maps found.");
-
 
         var lowerThanMaxPlayers = greaterThanMinPlayers.Where(map => map.NominationConfig.MaxPlayers == 0 || map.NominationConfig.MaxPlayers >= Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false })).ToList();
         DebugLogger.LogTrace($"[Filter | Lower Than Max Players] {lowerThanMaxPlayers.Count} maps found.");
 
-
         var notRequiresPermission = lowerThanMaxPlayers.Where(map => !map.NominationConfig.RequiredPermissions.Any()).ToList();
         DebugLogger.LogTrace($"[Filter | Not Requires Permission] {notRequiresPermission.Count} maps found.");
-
 
         var withinAllowedDays = notRequiresPermission.Where(map => !map.NominationConfig.DaysAllowed.Any() || map.NominationConfig.DaysAllowed.Contains(DateTime.Today.DayOfWeek)).ToList();
         DebugLogger.LogTrace($"[Filter | Within Allowed Days] {withinAllowedDays.Count} maps found.");
 
-
         var whithinAllowedTimeRange = withinAllowedDays.Where(map => !map.NominationConfig.AllowedTimeRanges.Any() || map.NominationConfig.AllowedTimeRanges.Count(range => range.IsInRange(TimeOnly.FromDateTime(DateTime.Now))) >= 1).ToList();
         DebugLogger.LogTrace($"[Filter | Within Allowed Time Range] {whithinAllowedTimeRange.Count} maps found.");
-
 
         var withoutCurrentMap = whithinAllowedTimeRange.Where(map => !map.MapName.Equals(_mapCycleController.CurrentMap?.MapName)).ToList();
         DebugLogger.LogTrace($"[Filter | Without Current Map] {withoutCurrentMap.Count} maps found.");
 
-
         var pickedMaps = withoutCurrentMap.Take(numToPick).ToList();
         DebugLogger.LogTrace($"[Filter | Finally] {pickedMaps.Count} maps picked.");
-
         return pickedMaps;
+#else
+        // Optimize with chained filters (ZLinq) and cached invariants to avoid repeated allocations and counts
+        int playerCount = Utilities.GetPlayers().Count(p => p is { IsBot: false, IsHLTV: false });
+        var now = DateTime.Now;
+        var today = now.DayOfWeek;
+        var currentTime = TimeOnly.FromDateTime(now);
+        string? currentMapName = _mapCycleController.CurrentMap?.MapName;
+
+        var candidatesQuery = unusedMapList
+            .Where(map => !map.IsDisabled)
+            .Where(map => map.MapCooldown.CurrentCooldown <= 0)
+            .Where(map => !map.GroupSettings.Any() || map.GroupSettings.All(setting => setting.GroupCooldown.CurrentCooldown <= 0))
+            .Where(map => !map.OnlyNomination)
+            .Where(map => !map.NominationConfig.RestrictToAllowedUsersOnly)
+            .Where(map => map.NominationConfig.MinPlayers == 0 || map.NominationConfig.MinPlayers <= playerCount)
+            .Where(map => map.NominationConfig.MaxPlayers == 0 || map.NominationConfig.MaxPlayers >= playerCount)
+            .Where(map => !map.NominationConfig.RequiredPermissions.Any())
+            .Where(map => !map.NominationConfig.DaysAllowed.Any() || map.NominationConfig.DaysAllowed.Contains(today))
+            .Where(map => !map.NominationConfig.AllowedTimeRanges.Any() || map.NominationConfig.AllowedTimeRanges.Any(range => range.IsInRange(currentTime)))
+            .Where(map => currentMapName is null || !string.Equals(map.MapName, currentMapName, StringComparison.OrdinalIgnoreCase));
+
+        // Materialize once
+        var candidates = candidatesQuery.ToList();
+        DebugLogger.LogTrace($"[Filter | Finally] {candidates.Count} maps remain after filtering.");
+
+        if (candidates.Count == 0 || numToPick <= 0)
+        {
+            DebugLogger.LogTrace("[Filter | Finally] 0 maps picked.");
+            return [];
+        }
+
+        PartialShuffle(candidates, numToPick, _random);
+        var pickedMaps = candidates.GetRange(0, Math.Min(numToPick, candidates.Count));
+        DebugLogger.LogTrace($"[Filter | Finally] {pickedMaps.Count} maps picked.");
+        return pickedMaps;
+#endif
     }
 
+    private static void PartialShuffle<T>(IList<T> list, int k, Random rng)
+    {
+        int n = list.Count;
+        k = Math.Min(k, n);
+        for (int i = 0; i < k; i++)
+        {
+            int j = i + rng.Next(n - i); // [i, n-1]
+            (list[i], list[j]) = (list[j], list[i]);
+        }
+    }
 
     private StringBuilder GetMapName(IMapVoteData votedMap, CCSPlayerController player)
     {

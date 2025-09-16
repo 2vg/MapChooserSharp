@@ -2,9 +2,6 @@ using System.Text;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Translations;
-using CS2MenuManager.API;
-using CS2MenuManager.API.Class;
-using CS2MenuManager.API.Enum;
 using MapChooserSharp.API.MapVoteController;
 using MapChooserSharp.Modules.MapVote.Interfaces;
 using MapChooserSharp.Modules.McsMenu.Interfaces;
@@ -14,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using TNCSSPluginFoundation;
 using TNCSSPluginFoundation.Interfaces;
 using ZLinq;
+using MenuSystemSharp.API;
 
 namespace MapChooserSharp.Modules.McsMenu.VoteMenu.Cs2MenuManager.MenuSystem;
 
@@ -33,6 +31,8 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
     
     private readonly Dictionary<int, List<MenuSystemOption>> _cachedMenuOptions = new();
 
+    private IMenuInstance? _currentMenuInstance;
+
     public McsSupportedMenuType McsMenuType { get; } = McsSupportedMenuType.Cs2MenuManagerMenuSystem;
 
     public int VoteOptionCount => _voteOptions.Count;
@@ -41,6 +41,22 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
     {
         if (_voteController.CurrentVoteState != McsMapVoteState.Voting && _voteController.CurrentVoteState != McsMapVoteState.RunoffVoting)
             return;
+
+        if (_currentMenuInstance != null)
+        {
+            try
+            {
+                _currentMenuInstance.Close();
+            }
+            catch (Exception e)
+            {
+                _plugin.Logger.LogError($"Error closing existing menu: {e}");
+            }
+            finally
+            {
+                _currentMenuInstance = null;
+            }
+        }
 
         // Unused variable, but it required to decide what language should use in menu.
         using var tempLang = new WithTemporaryCulture(playerController.GetLanguage());
@@ -58,8 +74,19 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
         }
         
         _debugLogger.LogTrace($"[Player {playerController.PlayerName}] Creating vote menu");
-        // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
-        var menu = MenuManager.CreateMenu<CS2MenuManager.API.Menu.MenuSystemSharpMenu>(menuTitle.ToString(), _plugin);
+
+        var menuSystem = MenuSystemSharp.API.MenuSystem.Instance;
+        if (menuSystem == null || !menuSystem.IsAvailable)
+        {
+            _plugin.Logger.LogError("MenuSystem is not available");
+            return;
+        }
+        
+        var menu = menuSystem.CreateMenu();
+        menu.Title = menuTitle.ToString();
+        menu.ItemControls = MenuItemControlFlags.Panel | MenuItemControlFlags.Next | MenuItemControlFlags.Back | MenuItemControlFlags.Exit;
+        
+        _currentMenuInstance = menu;
 
         // If menu option is already exists (this is intended for !revote feature)
         if (_cachedMenuOptions.TryGetValue(playerController.Slot, out var menuOps))
@@ -67,9 +94,9 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
             _debugLogger.LogTrace($"[Player {playerController.PlayerName}] vote menu menu is already cached, reusing...");
             foreach (var option in menuOps)
             {
-                menu.AddItem(option.Text, (player, menuOption) => option.Callback(player, option));
+                menu.AddItem(MenuItemStyleFlags.Active | MenuItemStyleFlags.HasNumber, option.Text, (menuInstance, player, itemPosition, itemOnPage, data) => option.Callback(player, option));
             }
-            DisplayMenu(playerController, menu);
+            menu.DisplayToPlayer(playerController);
             return;
         }
 
@@ -103,27 +130,35 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
         
         foreach (var option in menuOptions)
         {
-            menu.AddItem(option.Text, (player, menuOption) => option.Callback(player, option));
+            menu.AddItem(MenuItemStyleFlags.Active | MenuItemStyleFlags.HasNumber, option.Text, (menuInstance, player, itemPosition, itemOnPage, data) =>
+            {
+                option.Callback(player, option);
+            });
         }
         
         _cachedMenuOptions.TryAdd(playerController.Slot, menuOptions);
         
         _debugLogger.LogTrace($"[Player {playerController.PlayerName}] Menu init completed, opening...");
-        
-        DisplayMenu(playerController, menu);
+
+        menu.DisplayToPlayer(playerController, 0, _voteController.VoteEndTime);
     }
 
     public void CloseMenu()
     {
-        // Because CS2MenuManager doesn't have foolproof so check here
-        // Also playerController.IsValid is crashes server, so we'll use try catch
-        try
+        if (_currentMenuInstance != null)
         {
-            MenuManager.CloseActiveMenu(playerController);
-        }
-        catch (Exception e)
-        {
-            _plugin.Logger.LogError($"CS2MenuManager MenuSystem UI method {nameof(CloseMenu)} has thrown an exception: {e}");
+            try
+            {
+                var closeResult = _currentMenuInstance.Close();
+            }
+            catch (Exception e)
+            {
+                _plugin.Logger.LogError($"MenuSystem UI method {nameof(CloseMenu)} has thrown an exception: {e}");
+            }
+            finally
+            {
+                _currentMenuInstance = null;
+            }
         }
     }
 
@@ -145,11 +180,6 @@ public class McsCs2MenuManagerMenuSystemUi(CCSPlayerController playerController,
         IsMenuShuffleEnabled = enableShuffle;
     }
 
-    // TODO: Back to MenuSystemSharpMenu when fixed mms2-menu_system
-    private void DisplayMenu(CCSPlayerController player, CS2MenuManager.API.Menu.MenuSystemSharpMenu menu)
-    {
-        menu.Display(playerController, _voteController.VoteEndTime);
-    }
 }
 
 // Helper class for menu options

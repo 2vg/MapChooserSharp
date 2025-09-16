@@ -180,6 +180,47 @@ private McsEventResultWithCallback OnMapNominationBegin(McsNominationBeginEvent 
 
 プレイヤーを混乱させないためにも、キャンセルする際は必ずプレイヤーに対して通知を出すようにしましょう。
 
+### Intermissionイベントのサンプル
+
+ここでは、Intermissionの開始と終了イベントをListenしてみます。
+
+Cs2EndMatchScreen設定を使用している場合、Intermissionイベントがトリガーされます。
+
+#### IntermissionStartEvent (キャンセル可能)
+
+Intermission開始前に呼び出され、マップ変更をキャンセルすることができます。
+
+```csharp
+private McsEventResultWithCallback OnIntermissionStart(McsIntermissionStartEvent @event)
+{
+    Server.PrintToChatAll($"{@event.ModulePrefix} Intermission started! Next map: {@event.NextMap.MapName}");
+
+    // Example: Cancel map change if certain conditions are met
+    if (ShouldCancelMapChange())
+    {
+        return McsEventResultWithCallback.Stop(result =>
+        {
+            Server.PrintToChatAll($"{@event.ModulePrefix} Map change cancelled by external plugin!");
+        });
+    }
+
+    return McsEventResult.Continue;
+}
+```
+
+#### IntermissionEndEvent (通知のみ)
+
+マップ変更が完了した後に呼び出されます。
+
+```csharp
+private void OnIntermissionEnd(McsIntermissionEndEvent @event)
+{
+    Server.PrintToChatAll($"{@event.ModulePrefix} Map changed from {@event.PreviousMap.MapName} to {@event.NewMap.MapName}");
+
+    // Perform cleanup or other tasks after map change
+    PerformPostMapChangeCleanup();
+}
+```
 
 ### Eventの探し方
 

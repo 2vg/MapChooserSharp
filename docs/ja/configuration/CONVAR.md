@@ -68,6 +68,16 @@ ConVarのコンフィグファイルは `game/csgo/cfg/MapChooserSharp/convars.c
 | mcs_rtv_map_change_timing                      | 次のマップが確定している際にRTVが可決された場合にマップを変更するまでの時間 (秒で指定) | 3.0           | 有効な範囲: 0.0 - 60.0   |
 | mcs_rtv_minimum_requirements                   | RTVを行うために最低限必要な人数を指定します。 0を指定すると無効化出来ます。       | 0             | 有効な範囲: 0 - 64       |
 
+## Map Change Timing
+
+| ConVar                                           | Description                                                              | Default Value | note                       |
+|--------------------------------------------------|--------------------------------------------------------------------------|---------------|----------------------------|
+| mcs_time_based_vote_map_change_behaviour        | 時間経過の投票でマップ変更を行うタイミング。 0: 即時, 1: 次のラウンド終了後, 2: 時間切れまで待つ | 2             | 有効な範囲: 0 - 2           |
+| mcs_time_based_vote_map_change_delay            | 時間経過の投票でマップ変更を行う際の遅延秒数                                     | 3.0           | 有効な範囲: 0.0 - 60.0 seconds |
+| mcs_rtv_map_change_behaviour                    | RTVの投票でマップ変更を行うタイミング。 0: 即時, 1: 次のラウンド終了後, 2: 時間切れまで待つ   | 1             | 有効な範囲: 0 - 2           |
+| mcs_rtv_map_change_delay                        | RTVの投票でマップ変更を行う際の遅延秒数                                       | 3.0           | 有効な範囲: 0.0 - 60.0 seconds |
+| mcs_intermission_map_change_delay               | Cs2EndMatchScreen時のマップ変更遅延秒数                                   | 10.0          | 有効な範囲: 0.0 - 120.0 seconds |
+
 
 ## Timeleft Util
 

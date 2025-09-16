@@ -47,6 +47,9 @@
     <Reference Include="CS2MenuManager">
       <HintPath>..\lib\CS2MenuManager.dll</HintPath>
     </Reference>
+    <Reference Include="MenuSystemSharp.API">
+      <HintPath>..\lib\MenuSystemSharp.API.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

@@ -24,13 +24,13 @@ WorkshopCollectionIds = []
 # This will update the map name in settings to match the actual map name from the server
 ShouldAutoFixMapName = true
 
-# What map transition method to use when map change triggered by RTV?
-# 
+# What map transition method to use for map changes?
+#
 # Available types:
-# - ImmediatelyWithTime
-# - Cs2EndMatchScreen
-# 
-RtvMapChangeBehaviour = "ImmediatelyWithTime"
+# - Standard: Standard map transition
+# - Cs2EndMatchScreen: Use CS2's end match screen
+#
+MapTransitionMethod = "Standard"
 
 ```
 
@@ -50,9 +50,9 @@ An array of collection IDs to automatically fetch maps from Steam Workshop. When
 
 Specifies whether to automatically correct the map name in map settings with the actual map name (Server.MapName) when a map starts. This is useful when the Workshop map title differs from the actual map name.
 
-### RtvMapChangeBehaviour
+### MapTransitionMethod
 
-What map transition method to use when map change triggered by RTV?
+Specifies the map transition method to use for map changes. This setting applies to both RTV and time-based votes.
 
 ## SQL Settings
 
@@ -132,6 +132,10 @@ MapConfigDirectoryPath = "MapChooserSharp/maps/"
 
 # Relative path from game/csgo/cfg/ directory (e.g. if config directory located in game/csgo/cfg/MapChooserSharp/groups/, then put MapChooserSharp/groups/)
 GroupConfigDirectoryPath = "MapChooserSharp/groups/"
+
+# Default map name used when ChangeToNextMap is called without setting NextMap
+# If empty or not set, ChangeToNextMap will fail when NextMap is null
+DefaultMap = "de_dust2"
 ```
 
 ### FallbackMaxExtends

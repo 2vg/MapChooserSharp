@@ -252,10 +252,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     private void ChangeToNextMapInternal()
     {
-
+        var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap ?? "de_dust2";
         if (NextMap == null)
         {
-            var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap;
             if (!string.IsNullOrEmpty(defaultMapName))
             {
                 SetNextMap(defaultMapName);
@@ -271,6 +270,12 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
                 Logger.LogError("Failed to change map: next map is null and no default map configured");
                 return;
             }
+        } else if (NextMap != null && (string.IsNullOrEmpty(NextMap.MapName) || NextMap.WorkshopId < 0))
+        {
+            SetNextMap(defaultMapName);
+            Logger.LogError("Failed to change map: Invalid next map configuration: " +
+                            $"MapName='{NextMap.MapName}', WorkshopId='{NextMap.WorkshopId}'");
+            Logger.LogInformation($"Using default map '{defaultMapName}' since next map was invalid");
         }
 
         // Fire IntermissionEndEvent before changing map

@@ -68,6 +68,16 @@ ConVar configuration file is located in `game/csgo/cfg/MapChooserSharp/convars.c
 | mcs_rtv_map_change_timing                      | Seconds to change map when next map is confirmed and after RTV is success. Set 0.0 to change immediately | 3.0           | Valid Range is 0.0 - 60.0   |
 | mcs_rtv_minimum_requirements                   | Minimum RTV requirements to start RTV vote. Set 0 to disable this requirement                            | 0             | Valid Range is 0 - 64       |
 
+## Map Change Timing
+
+| ConVar                                           | Description                                                              | Default Value | note                       |
+|--------------------------------------------------|--------------------------------------------------------------------------|---------------|----------------------------|
+| mcs_time_based_vote_map_change_behaviour        | Map change timing for time-based votes. 0: Immediately, 1: Next round end, 2: When time runs out | 2             | Valid range: 0 - 2         |
+| mcs_time_based_vote_map_change_delay            | Delay in seconds after conditions are met for time-based votes                  | 3.0           | Valid range: 0.0 - 60.0 seconds |
+| mcs_rtv_map_change_behaviour                    | Map change timing for RTV votes. 0: Immediately, 1: Next round end, 2: When time runs out | 1             | Valid range: 0 - 2         |
+| mcs_rtv_map_change_delay                        | Delay in seconds after conditions are met for RTV votes                         | 3.0           | Valid range: 0.0 - 60.0 seconds |
+| mcs_intermission_map_change_delay               | Delay in seconds for map change during intermission (Cs2EndMatchScreen)         | 10.0          | Valid range: 0.0 - 120.0 seconds |
+
 
 ## Timeleft Util
 
