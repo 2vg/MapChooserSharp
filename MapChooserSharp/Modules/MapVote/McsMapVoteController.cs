@@ -27,6 +27,7 @@ using TNCSSPluginFoundation.Utils.Entity;
 using ZLinq;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
 using ZLinq;
+using MapChooserSharp.Modules.RockTheVote;
 
 namespace MapChooserSharp.Modules.MapVote;
 
@@ -469,9 +470,18 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
         CurrentVoteState = McsMapVoteState.Finalizing;
 
-        foreach (var (key, voteUi) in _mapVoteContent.VoteUi)
+        // Take a snapshot to avoid concurrent modification (e.g., client disconnect during iteration)
+        var uiSnapshot = _mapVoteContent.VoteUi.ToList();
+        foreach (var kv in uiSnapshot)
         {
-            voteUi.CloseMenu();
+            try
+            {
+                kv.Value.CloseMenu();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, "Exception while closing vote UI during EndVote");
+            }
         }
 
         foreach (IMapVoteData voteData in _mapVoteContent.GetVotingMaps())
@@ -489,9 +499,35 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
             // Remove nullable map config (extend map and don't change)
             _mapVoteContent.GetVotingMaps().RemoveAll(data => data.MapConfig == null);
- 
-            // O(1) random pick
+            // TODO: Safe fallback selection if no real map remains (can happen rarely)
             var list = _mapVoteContent.GetVotingMaps();
+            if (list.Count == 0)
+            {
+                // No concrete maps available to pick.
+                // Fallback: treat as "don't change" for RTV, or "extend" for time-based vote.
+                if (isActivatedByRtv)
+                {
+                    DebugLogger.LogWarning("No concrete maps available after removal and no votes; treating as 'Don't change'.");
+                    PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", Server.MapName);
+                    _mapVoteSoundPlayer.PlayVoteFinishedSoundToAll(false);
+                    FireMapNotChangedEvent();
+                    EndVotePostInitialization();
+                    CurrentVoteState = McsMapVoteState.NextMapConfirmed;
+                    return;
+                }
+                else
+                {
+                    DebugLogger.LogWarning("No concrete maps available after removal and no votes; treating as 'Extend current map'.");
+                    // Ensure extend type and extend once as a sensible fallback
+                    _timeLeftUtil.ReDetermineExtendType();
+                    ExtendCurrentMap(_timeLeftUtil.ExtendType);
+                    _mapVoteSoundPlayer.PlayVoteFinishedSoundToAll(false);
+                    EndVotePostInitialization();
+                    CurrentVoteState = McsMapVoteState.NoActiveVote;
+                    return;
+                }
+            } 
+            // O(1) random pick from remaining concrete maps
             var mapCfg = list[_random.Next(list.Count)].MapConfig!;
 
             PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", mapCfg.MapName);
@@ -701,9 +737,18 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
         CurrentVoteState = McsMapVoteState.Finalizing;
 
-        foreach (var (key, voteUi) in _mapVoteContent.VoteUi)
+        // Take a snapshot to avoid concurrent modification (e.g., client disconnect during iteration)
+        var uiSnapshot = _mapVoteContent.VoteUi.ToList();
+        foreach (var kv in uiSnapshot)
         {
-            voteUi.CloseMenu();
+            try
+            {
+                kv.Value.CloseMenu();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, "Exception while closing vote UI during EndRunoffVote");
+            }
         }
 
         foreach (IMapVoteData voteData in _mapVoteContent.GetVotingMaps())
@@ -718,15 +763,34 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
         if (totalVotes == 0)
         {
-            DebugLogger.LogDebug("There is no votes picking random map...");
-
+            DebugLogger.LogDebug("There is no votes picking random map (runoff)...");
             // Remove nullable map config (extend map and don't change)
             _mapVoteContent.GetVotingMaps().RemoveAll(data => data.MapConfig == null);
- 
-            // O(1) random pick
+            // TODO: Safe fallback selection if no real map remains (can happen if runoff only had non-map options)
             var list = _mapVoteContent.GetVotingMaps();
+            if (list.Count == 0)
+            {
+                if (isActivatedByRtv)
+                {
+                    DebugLogger.LogWarning("Runoff: No concrete maps available after removal and no votes; treating as 'Don't change'.");
+                    PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", Server.MapName);
+                    FireMapNotChangedEvent();
+                    EndVotePostInitialization();
+                    CurrentVoteState = McsMapVoteState.NextMapConfirmed;
+                    return;
+                }
+                else
+                {
+                    DebugLogger.LogWarning("Runoff: No concrete maps available after removal and no votes; treating as 'Extend current map'.");
+                    _timeLeftUtil.ReDetermineExtendType();
+                    ExtendCurrentMap(_timeLeftUtil.ExtendType);
+                    EndVotePostInitialization();
+                    CurrentVoteState = McsMapVoteState.NoActiveVote;
+                    return;
+                }
+            }
+            // O(1) random pick from remaining concrete maps
             var mapCfg = list[_random.Next(list.Count)].MapConfig!;
-
             PrintLocalizedChatToAll("MapVote.Broadcast.VoteResult.NoVotes", mapCfg.MapName);
             FireNextMapConfirmedEvent(mapCfg);
             EndVotePostInitialization();
@@ -774,9 +838,18 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
             return CurrentVoteState;
         }
 
-        foreach (var (key, voteUi) in _mapVoteContent!.VoteUi)
+        // Take a snapshot to avoid concurrent modification (e.g., client disconnect during iteration)
+        var uiSnapshot = _mapVoteContent!.VoteUi.ToList();
+        foreach (var kv in uiSnapshot)
         {
-            voteUi.CloseMenu();
+            try
+            {
+                kv.Value.CloseMenu();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, "Exception while closing vote UI during CancelVote");
+            }
         }
 
         FireVoteCancelEvent();
@@ -891,25 +964,41 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
 
     private void ShowVoteEndingCountdown(int count)
     {
+        // Snapshot content reference to avoid race with EndVotePostInitialization()
+        var content = _mapVoteContent;
+        if (content == null)
+            return;
+
         foreach (CCSPlayerController player in Utilities.GetPlayers()
                      .Where(p => p is { IsBot: false, IsHLTV: false }))
         {
-            if (!_mapVoteContent!.IsPlayerInVoteParticipant(player.Slot))
+            // Re-check null each loop in case vote ended mid-iteration
+            if (content == null)
+                break;
+
+            if (!content.IsPlayerInVoteParticipant(player.Slot))
                 continue;
 
             if (IsPlayerVotedToAnyMap(player))
                 continue;
 
-            if (!_mapVoteContent!.VoteUi.TryGetValue(player.Slot, out var voteInterface))
+            if (!content.VoteUi.TryGetValue(player.Slot, out var voteInterface))
                 continue;
 
-            if (voteInterface.McsMenuType == McsSupportedMenuType.BuiltInHtml)
+            try
             {
-                voteInterface.RefreshTitleCountdown(count);
+                if (voteInterface.McsMenuType == McsSupportedMenuType.BuiltInHtml)
+                {
+                    voteInterface.RefreshTitleCountdown(count);
+                }
+                else
+                {
+                    _countdownUiController.ShowCountdownToAll(count, McsCountdownType.Voting);
+                }
             }
-            else
+            catch (Exception e)
             {
-                _countdownUiController.ShowCountdownToAll(count, McsCountdownType.Voting);
+                Logger.LogError(e, "Exception while updating vote countdown UI");
             }
         }
     }
@@ -1035,17 +1124,28 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
  
         DebugLogger.LogDebug($"Player casted a vote! Player: {player.PlayerName}, VoteIndex: {voteIndex}");
  
+        // Validate index to avoid OOB in case UI/options desync or late clicks
+        var votingMaps = _mapVoteContent.GetVotingMaps();
+        if (voteIndex >= votingMaps.Count)
+        {
+            DebugLogger.LogWarning($"Out-of-range voteIndex={voteIndex} (options={votingMaps.Count}) from {player.PlayerName}, ignoring.");
+            return;
+        }
+ 
         // Incremental update of vote counts (supports revote O(1))
         if (_votedIndexBySlot.TryGetValue(player.Slot, out var prevIndex))
         {
             if (prevIndex != voteIndex)
             {
-                // Move vote to another option
-                _mapVoteContent.GetVotingMaps()[(int)prevIndex].RemoveVoter(player.Slot);
-                if (_votesPerOption != null && prevIndex < _votesPerOption.Length)
-                    _votesPerOption[prevIndex]--;
+                // Guard previous index as well (safety if list changed)
+                if (prevIndex < votingMaps.Count)
+                {
+                    votingMaps[(int)prevIndex].RemoveVoter(player.Slot);
+                    if (_votesPerOption != null && prevIndex < _votesPerOption.Length)
+                        _votesPerOption[prevIndex]--;
+                }
  
-                _mapVoteContent.GetVotingMaps()[voteIndex].AddVoter(player.Slot);
+                votingMaps[voteIndex].AddVoter(player.Slot);
                 if (_votesPerOption != null && voteIndex < _votesPerOption.Length)
                     _votesPerOption[voteIndex]++;
  
@@ -1056,7 +1156,7 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
         else
         {
             // First vote for this player
-            _mapVoteContent.GetVotingMaps()[voteIndex].AddVoter(player.Slot);
+            votingMaps[voteIndex].AddVoter(player.Slot);
             if (_votesPerOption != null && voteIndex < _votesPerOption.Length)
                 _votesPerOption[voteIndex]++;
             _votedIndexBySlot[player.Slot] = voteIndex;
@@ -1304,6 +1404,16 @@ internal sealed class McsMapVoteController(IServiceProvider serviceProvider) : P
     private void TryChangeMap()
     {
         Logger.LogInformation("Trying to change the map by RTV!");
+
+        // If server is configured to use CS2 End Match Screen (Intermission) for map transition,
+        // do NOT also schedule an immediate change here to avoid double-scheduling.
+        // Intermission path will schedule the change with its own delay.
+        if (_mcsPluginConfigProvider.PluginConfig.GeneralConfig.MapTransitionMethod == MapTransitionMethod.Cs2EndMatchScreen)
+        {
+            DebugLogger.LogInformation("Skipping immediate change since MapTransitionMethod is Cs2EndMatchScreen (Intermission will handle map change).");
+            return;
+        }
+
         if (ChangeMapImmediatelyWhenRtvVoteSuccess.Value)
         {
             _mapCycleController.ChangeToNextMap(0.1F);

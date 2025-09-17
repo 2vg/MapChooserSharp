@@ -177,5 +177,6 @@
     "MapCycleVoteExtend.Vote.Broadcast.Extended.TimeLeft": "{lime}Vote success{default}! Extended map time by {lime}{0}{default} minutes",
     "MapCycleVoteExtend.Vote.Broadcast.Extended.Rounds": "{lime}Vote success{default}! Extended round by {lime}{0}{default} rounds",
     "MapCycleVoteExtend.Vote.Broadcast.Extended.RoundTime": "{lime}Vote success{default}! Extended round time by {lime}{0}{default} minutes",
-    "MapCycleVoteExtend.Vote.Broadcast.ExtendFailed": "{red}Unknown error occured! Failed to extend a map!"
+    "MapCycleVoteExtend.Vote.Broadcast.ExtendFailed": "{red}Unknown error occured! Failed to extend a map!",
+    "MapCycle.Broadcast.DownloadingWorkshopMap": "Downloading workshop map {lime}{0}{default}. Please wait until it finishes"
 }

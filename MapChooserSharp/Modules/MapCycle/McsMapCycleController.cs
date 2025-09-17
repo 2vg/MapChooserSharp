@@ -50,6 +50,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     
     private IMapConfig? _nextMap = null;
+    // Preserve intended next map when changing to workshop maps,
+    // used to notify players if server loads <empty> during download
+    private IMapConfig? _lastIntendedNextMap = null;
 
     public IMapConfig? NextMap
     {
@@ -124,6 +127,8 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private Timer? _voteStartTimer = null;
 
     private Timer? _mapChangeTimer = null;
+
+    private Timer? _downloading = null;
 
     private const float VoteStartCheckInterval = 1.0F;
     
@@ -246,7 +251,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     {
         if (seconds < 0.0F)
             seconds = DefaultMapChangeDelay;
-        
+
+        // Prevent duplicate scheduled map-change timers
+        _mapChangeTimer?.Kill();
         _mapChangeTimer = Plugin.AddTimer(seconds, ChangeToNextMapInternal, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
@@ -270,7 +277,8 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
                 Logger.LogError("Failed to change map: next map is null and no default map configured");
                 return;
             }
-        } else if (NextMap != null && (string.IsNullOrEmpty(NextMap.MapName) || NextMap.WorkshopId < 0))
+        }
+        else if (NextMap != null && (string.IsNullOrEmpty(NextMap.MapName) || NextMap.WorkshopId < 0))
         {
             SetNextMap(defaultMapName);
             Logger.LogError("Failed to change map: Invalid next map configuration: " +
@@ -293,6 +301,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         long workshopId = NextMap.WorkshopId;
 
         var previousMap = CurrentMap ?? _mcsInternalMapConfigProviderApi.GetMapConfig(Server.MapName);
+
+        // Preserve intended next map to notify players when server temporarily loads <empty> while downloading
+        _lastIntendedNextMap = NextMap;
 
         if (workshopId == 0)
         {
@@ -319,10 +330,37 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     private void OnMapStart(string mapName)
     {
+        // Hard-kill any leftover map-change timer on map start to avoid post-change re-entry
+        _mapChangeTimer?.Kill();
+        _mapChangeTimer = null;
+        _downloading?.Kill();
+        _downloading = null;
+
         ExtendCount = 0;
 
         DecrementAllMapCooldown(CurrentMap);
-        
+
+        // If server temporarily moved to <empty> during workshop download, inform players once
+        if (mapName == "<empty>")
+        {
+            if (_lastIntendedNextMap != null)
+            {
+                _downloading = Plugin.AddTimer(10.0F, () =>
+                {
+                    if (_lastIntendedNextMap != null)
+                    {
+                        PrintLocalizedChatToAll("MapCycle.Broadcast.DownloadingWorkshopMap",
+                            _mcsInternalMapConfigProviderApi.GetMapName(_lastIntendedNextMap));
+                    }
+                }, TimerFlags.REPEAT);
+            }
+        }
+        else
+        {
+            // Clear the preserved map when a non-empty map actually starts
+            _lastIntendedNextMap = null;
+        }
+
         CurrentMap = NextMap;
         NextMap = null;
         

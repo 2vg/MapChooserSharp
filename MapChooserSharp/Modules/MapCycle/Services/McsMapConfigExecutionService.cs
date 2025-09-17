@@ -4,6 +4,8 @@ using System.Diagnostics;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using MapChooserSharp.API.MapConfig;
+using MapChooserSharp.API.MapVoteController;
+using MapChooserSharp.Interfaces;
 using MapChooserSharp.Modules.MapCycle.Interfaces;
 using MapChooserSharp.Modules.PluginConfig.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +23,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
     
     private IMcsInternalMapCycleControllerApi _mcsMapCycleController = null!;
     private IMcsPluginConfigProvider _mcsPluginConfigProvider = null!;
+    private ITimeLeftUtil _timeLeftUtil = null!;
 
     // K,V | configName(without extension), config path(relative path from game/csgo/cfg/)
     private ConcurrentDictionary<string, string> _groupConfigs = new(StringComparer.OrdinalIgnoreCase);
@@ -42,6 +45,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
     {
         _mcsMapCycleController = ServiceProvider.GetRequiredService<IMcsInternalMapCycleControllerApi>();
         _mcsPluginConfigProvider = ServiceProvider.GetRequiredService<IMcsPluginConfigProvider>();
+        _timeLeftUtil = ServiceProvider.GetRequiredService<ITimeLeftUtil>();
         
         _ServerGameDirectory = Server.GameDirectory;
         _fixedCs2CfgDirectoryLocation = Path.Combine(_ServerGameDirectory, "csgo/cfg/");
@@ -75,6 +79,7 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
             
             Server.NextFrame(() =>
             {
+                // Execute CFG files
                 foreach (var mapCfgPath in mapCfgsPath)
                 {
                     Server.ExecuteCommand($"exec {mapCfgPath}");
@@ -83,6 +88,9 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
                 {
                     Server.ExecuteCommand($"exec {groupCfgPath}");
                 }
+                
+                // Apply MapTime and MapRounds from MapConfig
+                ApplyMapConfigToGameServer();
             });
             DebugLogger.LogInformation($"[{PluginModuleName}] Execution done");
         }).ConfigureAwait(false);
@@ -225,6 +233,39 @@ public sealed class McsMapConfigExecutionService(IServiceProvider serviceProvide
         }
 
         return true;
+    }
+    
+    private void ApplyMapConfigToGameServer()
+    {
+        IMapConfig? mapConfig = _mcsMapCycleController.CurrentMap;
+        if (mapConfig == null)
+        {
+            DebugLogger.LogWarning("CurrentMap is null, cannot apply MapConfig to game server");
+            return;
+        }
+
+        // Apply MapTime or MapRounds based on ExtendType
+        switch (_timeLeftUtil.ExtendType)
+        {
+            case McsMapExtendType.TimeLimit:
+                DebugLogger.LogInformation($"Applying MapTime: {mapConfig.MapTime} minutes to mp_timelimit");
+                _timeLeftUtil.Set(mapConfig.MapTime);
+                break;
+                
+            case McsMapExtendType.Rounds:
+                DebugLogger.LogInformation($"Applying MapRounds: {mapConfig.MapRounds} rounds to mp_maxrounds");
+                _timeLeftUtil.Set(mapConfig.MapRounds);
+                break;
+                
+            case McsMapExtendType.RoundTime:
+                DebugLogger.LogInformation($"ExtendType is RoundTime, applying MapTime: {mapConfig.MapTime} minutes to mp_roundtime");
+                _timeLeftUtil.Set(mapConfig.MapTime);
+                break;
+                
+            default:
+                DebugLogger.LogWarning($"Unknown ExtendType: {_timeLeftUtil.ExtendType}");
+                break;
+        }
     }
 
     private enum McsMapConfigType

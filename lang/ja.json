@@ -177,5 +177,6 @@
     "MapCycleVoteExtend.Vote.Broadcast.Extended.TimeLeft": "投票が{lime}可決{default}されました! 現在のマップが {lime}{0}{default} 分延長されました",
     "MapCycleVoteExtend.Vote.Broadcast.Extended.Rounds": "投票が{lime}可決{default}されました! 現在のマップが {lime}{0}{default} ラウンド延長されました",
     "MapCycleVoteExtend.Vote.Broadcast.Extended.RoundTime": "投票が{lime}可決{default}されました! 現在のラウンドが {lime}{0}{default} 分延長されました",
-    "MapCycleVoteExtend.Vote.Broadcast.ExtendFailed": "{red}不明なエラーが発生し延長に失敗しました!"
+    "MapCycleVoteExtend.Vote.Broadcast.ExtendFailed": "{red}不明なエラーが発生し延長に失敗しました!",
+    "MapCycle.Broadcast.DownloadingWorkshopMap": "マップ {lime}{0}{default} をダウンロード中です。完了までしばらくお待ちください"
 }
