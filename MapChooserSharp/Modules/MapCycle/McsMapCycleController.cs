@@ -252,38 +252,42 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         if (seconds < 0.0F)
             seconds = DefaultMapChangeDelay;
 
-        // Prevent duplicate scheduled map-change timers
-        _mapChangeTimer?.Kill();
         _mapChangeTimer = Plugin.AddTimer(seconds, ChangeToNextMapInternal, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
     private void ChangeToNextMapInternal()
     {
-        var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap ?? "de_dust2";
+        //var defaultMapName = _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.DefaultMap ?? "de_dust2";
+        //if (NextMap == null)
+        //{
+        //    if (!string.IsNullOrEmpty(defaultMapName))
+        //    {
+        //        //SetNextMap(defaultMapName);
+        //        if (NextMap == null)
+        //        {
+        //            Logger.LogError($"Failed to change map: default map '{defaultMapName}' could not be found");
+        //            return;
+        //        }
+        //        Logger.LogInformation($"Using default map '{defaultMapName}' since next map was null");
+        //    }
+        //    else
+        //    {
+        //        Logger.LogError("Failed to change map: next map is null and no default map configured");
+        //        return;
+        //    }
+        //}
+        //else if (NextMap != null && (string.IsNullOrEmpty(NextMap.MapName) || NextMap.WorkshopId < 0))
+        //{
+        //    SetNextMap(defaultMapName);
+        //    Logger.LogError("Failed to change map: Invalid next map configuration: " +
+        //                    $"MapName='{NextMap.MapName}', WorkshopId='{NextMap.WorkshopId}'");
+        //    Logger.LogInformation($"Using default map '{defaultMapName}' since next map was invalid");
+        //}
+
         if (NextMap == null)
         {
-            if (!string.IsNullOrEmpty(defaultMapName))
-            {
-                SetNextMap(defaultMapName);
-                if (NextMap == null)
-                {
-                    Logger.LogError($"Failed to change map: default map '{defaultMapName}' could not be found");
-                    return;
-                }
-                Logger.LogInformation($"Using default map '{defaultMapName}' since next map was null");
-            }
-            else
-            {
-                Logger.LogError("Failed to change map: next map is null and no default map configured");
-                return;
-            }
-        }
-        else if (NextMap != null && (string.IsNullOrEmpty(NextMap.MapName) || NextMap.WorkshopId < 0))
-        {
-            SetNextMap(defaultMapName);
-            Logger.LogError("Failed to change map: Invalid next map configuration: " +
-                            $"MapName='{NextMap.MapName}', WorkshopId='{NextMap.WorkshopId}'");
-            Logger.LogInformation($"Using default map '{defaultMapName}' since next map was invalid");
+            Logger.LogError("Failed to change map: next map is null");
+            return;
         }
 
         // Fire IntermissionEndEvent before changing map
@@ -331,8 +335,8 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private void OnMapStart(string mapName)
     {
         // Hard-kill any leftover map-change timer on map start to avoid post-change re-entry
-        _mapChangeTimer?.Kill();
-        _mapChangeTimer = null;
+        //_mapChangeTimer?.Kill();
+        //_mapChangeTimer = null;
         _downloading?.Kill();
         _downloading = null;
 
