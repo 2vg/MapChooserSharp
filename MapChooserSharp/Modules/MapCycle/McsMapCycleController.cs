@@ -48,7 +48,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private IMcsDatabaseProvider _mcsDatabaseProvider = null!;
     private ITimeLeftUtil _timeLeftUtil = null!;
 
-    
+
     private IMapConfig? _nextMap = null;
     // Preserve intended next map when changing to workshop maps,
     // used to notify players if server loads <empty> during download
@@ -59,7 +59,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         get => _nextMap;
         private set => _nextMap = value;
     }
-    
+
     public bool IsNextMapConfirmed => _nextMap != null;
 
     public bool ChangeMapOnNextRoundEnd { get; set; } = false;
@@ -80,9 +80,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
     public int ExtendCount { get; private set; } = 0;
     private int ExtendLimit { get; set; } = 0;
-    
+
     public int ExtendsLeft => ExtendLimit - ExtendCount;
-    
+
     public bool SetNextMap(IMapConfig mapConfig)
     {
         NextMap = mapConfig;
@@ -108,9 +108,9 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     {
         if (NextMap == null)
             return false;
-        
+
         FireNextMapRemovedEvent(NextMap);
-        
+
         _mapChangeTimer?.Kill();
         ChangeMapOnNextRoundEnd = false;
         NextMap = null;
@@ -118,7 +118,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         return true;
     }
 
-    
+
     private int DefaultMapExtends => _mcsPluginConfigProvider.PluginConfig.MapCycleConfig.FallbackDefaultMaxExtends;
 
 
@@ -131,12 +131,12 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private Timer? _downloading = null;
 
     private const float VoteStartCheckInterval = 1.0F;
-    
+
     private const float DefaultRoundRestartDelay = 7.0F;
 
     private const float DefaultMapChangeDelay = 10.0F;
-    
-    
+
+
     // Those variables are used for avoid unexpected cooldown reduction when server startup
     private bool IsFirstMapEnded { get; set; }
     private bool IsSecondMapIsPassed { get; set; }
@@ -167,7 +167,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     public readonly FakeConVar<float> IntermissionMapChangeDelay = new("mcs_intermission_map_change_delay",
         "Delay in seconds for map change during intermission (Cs2EndMatchScreen)", 10.0F,
         ConVarFlags.FCVAR_NONE, new RangeValidator<float>(0.0F, 120.0F));
-    
+
     protected override void OnInitialize()
     {
         TrackConVar(VoteStartTimingTime);
@@ -178,7 +178,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         TrackConVar(RtvMapChangeDelay);
         TrackConVar(IntermissionMapChangeDelay);
     }
-    
+
     public override void RegisterServices(IServiceCollection services)
     {
         services.AddSingleton<IMcsInternalMapCycleControllerApi>(this);
@@ -194,11 +194,11 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         _timeLeftUtil = ServiceProvider.GetRequiredService<ITimeLeftUtil>();
         _mcsDatabaseProvider = ServiceProvider.GetRequiredService<IMcsDatabaseProvider>();
         _mapConfigExecutionService = ServiceProvider.GetRequiredService<McsMapConfigExecutionService>();
-        
+
         _mcsEventManager.RegisterEventHandler<McsNextMapConfirmedEvent>(OnNextMapConfirmed);
         _mcsEventManager.RegisterEventHandler<McsMapExtendEvent>(OnMapExtended);
         _mcsEventManager.RegisterEventHandler<McsMapNotChangedEvent>(OnMapNotChanged);
-        
+
         Plugin.RegisterListener<Listeners.OnMapStart>(OnMapStart);
         Plugin.RegisterListener<Listeners.OnClientPutInServer>(OnClientPutInServer);
         Plugin.RegisterListener<Listeners.OnMapEnd>(() =>
@@ -209,7 +209,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         });
         Plugin.RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
         Plugin.RegisterEventHandler<EventCsIntermission>(OnIntermission);
-        
+
         // This is for late timer start
         // Since we cannot obtain McsMapExtendType before map is fully loaded
         // So we'll wait for first round started
@@ -217,7 +217,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         {
             if (_isMapStarted)
                 return HookResult.Continue;
-            
+
             _timeLeftUtil.ReDetermineExtendType();
             _isMapStarted = true;
             RecreateVoteTimer();
@@ -240,18 +240,18 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         _mcsEventManager.UnregisterEventHandler<McsNextMapConfirmedEvent>(OnNextMapConfirmed);
         _mcsEventManager.UnregisterEventHandler<McsMapExtendEvent>(OnMapExtended);
         _mcsEventManager.UnregisterEventHandler<McsMapNotChangedEvent>(OnMapNotChanged);
-        
+
         Plugin.RemoveListener<Listeners.OnMapStart>(OnMapStart);
         Plugin.DeregisterEventHandler<EventRoundEnd>(OnRoundEnd);
         Plugin.DeregisterEventHandler<EventCsIntermission>(OnIntermission);
     }
-
 
     public void ChangeToNextMap(float seconds)
     {
         if (seconds < 0.0F)
             seconds = DefaultMapChangeDelay;
 
+        _mapChangeTimer?.Kill();
         _mapChangeTimer = Plugin.AddTimer(seconds, ChangeToNextMapInternal, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
@@ -328,7 +328,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         // TODO if current map is official maps, then set IsSecondMapIsPassed to true.
         if (IsSecondMapIsPassed || !IsFirstMapEnded)
             return;
-        
+
         IsSecondMapIsPassed = true;
     }
 
@@ -367,7 +367,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
         CurrentMap = NextMap;
         NextMap = null;
-        
+
 
         // Wait for first people joined
         // TODO() Maybe we can use Server.NextWorldUpdate() to execute things?
@@ -384,7 +384,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         if (CurrentMap == null)
         {
             CurrentMap = _mcsInternalMapConfigProviderApi.GetMapConfig(mapName);
-            
+
             // If map name isn't match with config then find with workshop ID
             if (CurrentMap == null)
             {
@@ -405,7 +405,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         // To prevent unxpected cooldown reduction
         if (!IsFirstMapEnded || !IsSecondMapIsPassed)
             return;
-        
+
         // Decrement all cooldowns
         _mcsDatabaseProvider.MapInfoRepository.DecrementAllCooldownsAsync().ConfigureAwait(false);
         _mcsDatabaseProvider.GroupInfoRepository.DecrementAllCooldownsAsync().ConfigureAwait(false);
@@ -426,7 +426,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         {
             _mcsDatabaseProvider.MapInfoRepository.UpsertMapCooldownAsync(previousMap.MapName, previousMap.MapCooldown.MapConfigCooldown).ConfigureAwait(false);
             previousMap.MapCooldown.CurrentCooldown = previousMap.MapCooldown.MapConfigCooldown;
-            
+
             foreach (IMapGroupSettings setting in previousMap.GroupSettings)
             {
                 _mcsDatabaseProvider.GroupInfoRepository.UpsertGroupCooldownAsync(setting.GroupName, setting.GroupCooldown.MapConfigCooldown).ConfigureAwait(false);
@@ -435,7 +435,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         }
     }
 
-        
+
     private HookResult OnRoundEnd(EventRoundEnd @event, GameEventInfo info)
     {
         if (!_isMapStarted)
@@ -621,7 +621,7 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
     private void OnMapExtended(McsMapExtendEvent @event)
     {
         ExtendCount++;
-        
+
         switch (@event.MapExtendType)
         {
             case McsMapExtendType.TimeLimit:
@@ -651,29 +651,29 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
         switch (_timeLeftUtil.ExtendType)
         {
             case McsMapExtendType.TimeLimit:
-                CreateVoteStartTimer(() => _timeLeftUtil.TimeLimit  > VoteStartTimingTime.Value) ;
+                CreateVoteStartTimer(() => _timeLeftUtil.TimeLimit > VoteStartTimingTime.Value);
                 break;
-            
+
             case McsMapExtendType.RoundTime:
                 CreateVoteStartTimer(() => _timeLeftUtil.RoundTimeLeft > VoteStartTimingTime.Value);
                 break;
-            
+
             case McsMapExtendType.Rounds:
                 CreateVoteStartTimer(() => _timeLeftUtil.RoundsLeft > VoteStartTimingRound.Value);
                 break;
         }
     }
-    
+
     private void CreateVoteStartTimer(Func<bool> shouldContinueCheck)
     {
         _voteStartTimer = Plugin.AddTimer(VoteStartCheckInterval, () =>
         {
             if (!_isMapStarted)
                 return;
-            
+
             if (shouldContinueCheck())
                 return;
-        
+
             if (_mcsMapVoteController.CurrentVoteState == McsMapVoteState.NextMapConfirmed)
             {
                 _voteStartTimer?.Kill();
@@ -714,13 +714,13 @@ internal sealed class McsMapCycleController(IServiceProvider serviceProvider, bo
 
         _mcsMapVoteController.InitiateVote(false); // Time-based vote
     }
-    
+
     private void FireNextMapChangedEvent(IMapConfig newConfig)
     {
         var confirmedEvent = new McsNextMapChangedEvent(GetTextWithPluginPrefix(null, ""), newConfig);
         _mcsEventManager.FireEventNoResult(confirmedEvent);
     }
-    
+
     private void FireNextMapRemovedEvent(IMapConfig newConfig)
     {
         var nextMapRemovedEvent = new McsNextMapRemovedEvent(GetTextWithPluginPrefix(null, ""), newConfig);

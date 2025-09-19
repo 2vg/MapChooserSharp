@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using CounterStrikeSharp.API;
+using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Utils;
 using MapChooserSharp.API.MapConfig;
 using MapChooserSharp.Modules.MapConfig;
@@ -26,6 +28,15 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
     private MapConfigRepository _mapConfigRepository = null!;
     private HashSet<string> _defaultKeys = new(StringComparer.OrdinalIgnoreCase);
 
+    private nint? _pMultiAddonManager = null;
+
+    private VirtualFunctionWithReturn<nint, string, bool, bool, bool>? _mamDownloadAddon;
+    private Action<nint, bool>? _mamRefreshAddons;
+    private VirtualFunctionWithReturn<nint, bool>? _mamHasUgcConnection;
+
+    private const int UgcRetryMaxAttempts = 10;
+    private const int UgcRetryDelayMs = 3000;
+
     protected override void OnAllPluginsLoaded()
     {
         _configProvider = ServiceProvider.GetRequiredService<IMcsPluginConfigProvider>();
@@ -43,6 +54,42 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         {
             Logger.LogInformation("[MCS WS] No Workshop Collection IDs found in config. Skipping sync.");
         }
+
+        var downloadOnlyCollections = _configProvider.PluginConfig.GeneralConfig.WorkshopDownloadOnlyCollectionIds;
+        if (downloadOnlyCollections != null && downloadOnlyCollections.Length > 0)
+        {
+            Logger.LogInformation($"[MCS WS] Found {downloadOnlyCollections.Length} WorkshopDownloadOnlyCollectionIds. Will download addons without generating configs.");
+            foreach (var colId in downloadOnlyCollections)
+            {
+                _ = QueueDownloadOnlyCollection(colId);
+            }
+        }
+
+        Plugin.RegisterListener<Listeners.OnMetamodAllPluginsLoaded>(() =>
+        {
+            if (!_configProvider.PluginConfig.GeneralConfig.EnableWorkshopAutoDownload)
+            {
+                Logger.LogInformation("[MCS WS] Automatic Workshop downloads are disabled by config");
+                return;
+            }
+
+            try
+            {
+                InitializeMultiAddonManager();
+                if (_pMultiAddonManager.HasValue && _mamDownloadAddon != null)
+                {
+                    TryStartWorkshopDownloadsWithUgcRetry();
+                }
+                else
+                {
+                    Logger.LogInformation("[MCS WS] MultiAddonManager not available. Skipping automatic workshop downloads.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[MCS WS] Exception during MultiAddonManager initialization/downloads: {ex.Message}");
+            }
+        });
     }
 
     protected override void OnUnloadModule()
@@ -61,6 +108,331 @@ internal class McsWorkshopMapSynchronizer(IServiceProvider serviceProvider) : Pl
         {
             _ = SyncWorkshopCollectionAsync(collectionId.Trim());
         }
+    }
+
+    private async Task QueueDownloadOnlyCollection(string collectionId)
+    {
+        var trimmed = collectionId?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return;
+
+        try
+        {
+            var ids = await FetchWorkshopIdsFromCollectionAsync(trimmed);
+            if (ids.Count == 0)
+            {
+                Logger.LogWarning($"[MCS WS] No downloadable items found in WorkshopDownloadOnlyCollection: {trimmed}");
+                return;
+            }
+
+            // ensure MultiAddonManager + UGC ready then download specific ids
+            Plugin.RegisterListener<Listeners.OnMetamodAllPluginsLoaded>(() =>
+            {
+                if (!_configProvider.PluginConfig.GeneralConfig.EnableWorkshopAutoDownload)
+                    return;
+
+                try
+                {
+                    InitializeMultiAddonManager();
+                    if (_pMultiAddonManager.HasValue && _mamDownloadAddon != null)
+                    {
+                        TryDownloadSpecificIdsWithUgcRetry(ids);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[MCS WS] Failed to queue download-only collection {trimmed}: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[MCS WS] Error loading download-only collection {trimmed}: {ex.Message}");
+        }
+    }
+
+    private async Task<HashSet<string>> FetchWorkshopIdsFromCollectionAsync(string collectionId)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(collectionId))
+            return result;
+
+        if (!long.TryParse(collectionId, out _))
+        {
+            Logger.LogWarning($"[MCS WS] Invalid Workshop Collection ID format for download-only: '{collectionId}'. Skipping.");
+            return result;
+        }
+
+        string url = $"https://steamcommunity.com/sharedfiles/filedetails/?id={collectionId}";
+        Logger.LogInformation($"[MCS WS] (DL-Only) Fetching Workshop collection: {url}");
+
+        string pageSource;
+        using (var response = await _httpClient.GetAsync(url))
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.LogError($"[MCS WS] (DL-Only) Failed to fetch Workshop collection {collectionId}. Status code: {response.StatusCode}");
+                return result;
+            }
+            pageSource = await response.Content.ReadAsStringAsync();
+        }
+
+        var pattern = new Regex(@"<a href=""https://steamcommunity.com/sharedfiles/filedetails/\?id=(\d+)"">", RegexOptions.Singleline);
+        var matches = pattern.Matches(pageSource);
+        foreach (Match m in matches)
+        {
+            var id = m.Groups[1].Value;
+            if (!string.IsNullOrWhiteSpace(id))
+                result.Add(id);
+        }
+
+        Logger.LogInformation($"[MCS WS] (DL-Only) Extracted {result.Count} items from collection {collectionId}");
+        return result;
+    }
+
+    private void TryDownloadSpecificIdsWithUgcRetry(HashSet<string> ids)
+    {
+        if (ids.Count == 0)
+            return;
+
+        if (!_pMultiAddonManager.HasValue)
+        {
+            Logger.LogInformation("[MCS WS] MultiAddonManager handle is null. Skip retry for specific IDs.");
+            return;
+        }
+
+        if (_mamHasUgcConnection == null)
+        {
+            Logger.LogWarning("[MCS WS] HasUGCConnection function not available. Proceeding without pre-check for specific IDs.");
+            Server.NextFrame(() => DownloadSpecificIds(ids));
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            for (int attempt = 1; attempt <= UgcRetryMaxAttempts; attempt++)
+            {
+                bool connected = false;
+                try
+                {
+                    connected = _mamHasUgcConnection.Invoke(_pMultiAddonManager.Value);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[MCS WS] HasUGCConnection threw: {ex.Message}");
+                }
+
+                if (connected)
+                {
+                    Logger.LogInformation($"[MCS WS] UGC connection available. Downloading {ids.Count} items (attempt {attempt}/{UgcRetryMaxAttempts}).");
+                    Server.NextFrame(() => DownloadSpecificIds(ids));
+                    return;
+                }
+
+                if (attempt < UgcRetryMaxAttempts)
+                {
+                    Logger.LogWarning($"[MCS WS] UGC not connected yet (specific IDs). Retrying in {UgcRetryDelayMs/1000.0:F1}s... (attempt {attempt}/{UgcRetryMaxAttempts})");
+                    await Task.Delay(UgcRetryDelayMs);
+                }
+            }
+
+            Logger.LogError("[MCS WS] UGC connection was not established after retries (specific IDs). Skipping downloads.");
+        });
+    }
+
+    private void DownloadSpecificIds(HashSet<string> ids)
+    {
+        if (!_pMultiAddonManager.HasValue || _mamDownloadAddon == null)
+            return;
+
+        int success = 0, total = 0;
+        foreach (var id in ids)
+        {
+            total++;
+            bool started = false;
+            try
+            {
+                started = _mamDownloadAddon.Invoke(_pMultiAddonManager.Value, id, false, true);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[MCS WS] (DL-Only) DownloadAddon threw for {id}: {ex.Message}");
+            }
+
+            if (started)
+            {
+                success++;
+                Logger.LogDebug($"[MCS WS] (DL-Only) DownloadAddon queued/already present: {id}");
+            }
+            else
+            {
+                Logger.LogWarning($"[MCS WS] (DL-Only) DownloadAddon returned false for {id}");
+            }
+        }
+
+        Logger.LogInformation($"[MCS WS] (DL-Only) Requested workshop downloads: {success}/{total} (success/total)");
+
+        try
+        {
+            _mamRefreshAddons?.Invoke(_pMultiAddonManager.Value, false);
+            Logger.LogInformation("[MCS WS] (DL-Only) Invoked RefreshAddons(bReloadMap: false).");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[MCS WS] (DL-Only) RefreshAddons failed: {ex.Message}");
+        }
+    }
+
+    private void InitializeMultiAddonManager()
+    {
+        try
+        {
+            _pMultiAddonManager = Utilities.MetaFactory("MultiAddonManager003");
+            if (!_pMultiAddonManager.HasValue)
+            {
+                _pMultiAddonManager = Utilities.MetaFactory("MultiAddonManager002");
+            }
+
+            if (!_pMultiAddonManager.HasValue)
+            {
+                Logger.LogInformation("[MCS WS] MultiAddonManager not found via MetaFactory.");
+                return;
+            }
+
+            // vtable index assumptions based on provided header order:
+            // 0 AddAddon, 1 RemoveAddon, 2 IsAddonMounted, 3 DownloadAddon, 4 RefreshAddons, 5 ClearAddons, 6 HasUGCConnection, 7..9 client functions
+            _mamDownloadAddon = new(_pMultiAddonManager.Value, 3);
+            _mamRefreshAddons = VirtualFunction.CreateVoid<nint, bool>(_pMultiAddonManager.Value, 4);
+            _mamHasUgcConnection = new(_pMultiAddonManager.Value, 6);
+
+            Logger.LogInformation("[MCS WS] MultiAddonManager resolved and delegates bound successfully.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[MCS WS] Failed to initialize MultiAddonManager: {ex.Message}");
+            _pMultiAddonManager = null;
+            _mamDownloadAddon = null;
+            _mamRefreshAddons = null;
+            _mamHasUgcConnection = null;
+        }
+    }
+
+    private void TryStartWorkshopDownloadsWithUgcRetry()
+    {
+        if (!_pMultiAddonManager.HasValue)
+        {
+            Logger.LogInformation("[MCS WS] MultiAddonManager handle is null. Skip retry.");
+            return;
+        }
+
+        if (_mamHasUgcConnection == null)
+        {
+            Logger.LogWarning("[MCS WS] HasUGCConnection function not available. Proceeding without pre-check.");
+            Server.NextFrame(StartWorkshopDownloads);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            for (int attempt = 1; attempt <= UgcRetryMaxAttempts; attempt++)
+            {
+                bool connected = false;
+                try
+                {
+                    connected = _mamHasUgcConnection.Invoke(_pMultiAddonManager.Value);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[MCS WS] HasUGCConnection threw: {ex.Message}");
+                }
+
+                if (connected)
+                {
+                    Logger.LogInformation($"[MCS WS] UGC connection available. Starting workshop downloads (attempt {attempt}/{UgcRetryMaxAttempts}).");
+                    Server.NextFrame(StartWorkshopDownloads);
+                    return;
+                }
+
+                if (attempt < UgcRetryMaxAttempts)
+                {
+                    Logger.LogWarning($"[MCS WS] UGC not connected yet. Retrying in {UgcRetryDelayMs/1000.0:F1}s... (attempt {attempt}/{UgcRetryMaxAttempts})");
+                    await Task.Delay(UgcRetryDelayMs);
+                }
+            }
+
+            Logger.LogError("[MCS WS] UGC connection was not established after retries. Skipping automatic workshop downloads.");
+        });
+    }
+
+    private void StartWorkshopDownloads()
+    {
+        if (!_pMultiAddonManager.HasValue || _mamDownloadAddon == null)
+            return;
+
+        var ids = CollectAllWorkshopIds();
+        if (ids.Count == 0)
+        {
+            Logger.LogInformation("[MCS WS] No workshop IDs found in current map configurations. Skipping downloads.");
+            return;
+        }
+
+        int success = 0, total = 0;
+        foreach (var id in ids)
+        {
+            total++;
+            bool started = false;
+            try
+            {
+                started = _mamDownloadAddon.Invoke(_pMultiAddonManager.Value, id, false, true);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[MCS WS] DownloadAddon threw for {id}: {ex.Message}");
+            }
+
+            if (started)
+            {
+                success++;
+                Logger.LogDebug($"[MCS WS] DownloadAddon queued/already present: {id}");
+            }
+            else
+            {
+                Logger.LogWarning($"[MCS WS] DownloadAddon returned false for {id}");
+            }
+        }
+
+        Logger.LogInformation($"[MCS WS] Requested workshop downloads: {success}/{total} (success/total)");
+
+        try
+        {
+            _mamRefreshAddons?.Invoke(_pMultiAddonManager.Value, false);
+            Logger.LogInformation("[MCS WS] Invoked RefreshAddons(bReloadMap: false).");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[MCS WS] RefreshAddons failed: {ex.Message}");
+        }
+    }
+
+    private HashSet<string> CollectAllWorkshopIds()
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            var all = _mapConfigProvider.GetMapConfigs().Values;
+            foreach (var cfg in all)
+            {
+                if (cfg.WorkshopId > 0)
+                {
+                    ids.Add(cfg.WorkshopId.ToString());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"[MCS WS] Failed to collect workshop IDs: {ex.Message}");
+        }
+        return ids;
     }
 
     private async Task<int> SyncWorkshopCollectionAsync(string collectionId)

@@ -374,6 +374,16 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
         var workshopCollectionIds = generalTable.TryGetValue("WorkshopCollectionIds", out var workshopCollectionIdsObj) && workshopCollectionIdsObj is TomlArray workshopCollectionIdsArray
             ? workshopCollectionIdsArray.Select(x => x?.ToString() ?? string.Empty).ToArray()
             : Array.Empty<string>();
+
+        var downloadOnlyCollectionIds = generalTable.TryGetValue("WorkshopDownloadOnlyCollectionIds", out var downloadOnlyObj) && downloadOnlyObj is TomlArray downloadOnlyArray
+            ? downloadOnlyArray.Select(x => x?.ToString() ?? string.Empty).ToArray()
+            : Array.Empty<string>();
+        
+        bool enableWorkshopAutoDownload = false;
+        if (generalTable.TryGetValue("EnableWorkshopAutoDownload", out var enableWsObj) && enableWsObj is bool enableWs)
+        {
+            enableWorkshopAutoDownload = enableWs;
+        }
         
         bool shouldAutoFixMapName = generalTable.TryGetValue("ShouldAutoFixMapName", out var shouldAutoFixMapNameObj) && shouldAutoFixMapNameObj is bool autoFixMapNameSetting
             ? autoFixMapNameSetting
@@ -387,7 +397,7 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
             throw new InvalidOperationException("General.MapTransitionMethod is not found or invalid");
         }
 
-        return new McsGeneralConfig(aliasNameSetting, verboseCooldownPrint, workshopCollectionIds, shouldAutoFixMapName, sqlConfig, (MapTransitionMethod)mapTransitionMethodEnum);
+        return new McsGeneralConfig(aliasNameSetting, verboseCooldownPrint, workshopCollectionIds, downloadOnlyCollectionIds, enableWorkshopAutoDownload, shouldAutoFixMapName, sqlConfig, (MapTransitionMethod)mapTransitionMethodEnum);
     }
 
     private McsSqlConfig ParseSqlConfig(TomlTable tomlModel)
@@ -522,14 +532,23 @@ internal sealed class McsPluginConfigParser(string configPath, IServiceProvider 
 # Should use alias map name if available? (This will take effect to all things that prints a map name)
 ShouldUseAliasMapNameIfAvailable = true
 
-# Should print the cooldown? 
+# Should print the cooldown?
 # if true, and commands in cooldown, it will show cooldown message with seconds
 # if false, and commands in cooldown, it will show only cooldown message
 VerboseCooldownPrint = true
 
-# Workshop Collection IDs to automatically fetch maps from
+# Workshop Collection IDs to automatically generate map configs from
 # Example: WorkshopCollectionIds = [ ""3070257939"", ""1234567890"" ]
 WorkshopCollectionIds = []
+
+# Workshop Collection IDs to download only (no config generation).
+# Items in these collections are downloaded via MultiAddonManager on startup.
+# Example: WorkshopDownloadOnlyCollectionIds = [ ""3157463861"" ]
+WorkshopDownloadOnlyCollectionIds = []
+
+# Enable automatic Workshop downloads via MultiAddonManager on startup
+# When false, MapChooserSharp will not call MetaFactory/DownloadAddon/RefreshAddons on startup
+EnableWorkshopAutoDownload = false
 
 # Should automatically fix map name in map settings when map starts?
 # This will update the map name in settings to match the actual map name from the server
